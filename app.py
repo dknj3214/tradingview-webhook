@@ -22,13 +22,13 @@ def webhook():
     action = data.get("action", "").lower()
 
     if action == "buy":
-        print("🚀 觸發買進操作")
-        ig.place_order(EPIC, direction="BUY")
+        print(f"🚀 執行買單：{size} 手")
+        ig.place_order(EPIC, direction="BUY", size=size)
     elif action == "sell":
-        print("🔻 觸發賣出操作")
-        ig.place_order(EPIC, direction="SELL")
+        print(f"🔻 執行賣單：{size} 手")
+        ig.place_order(EPIC, direction="SELL", size=size)
     else:
-        print("⚠️ 未知訊號")
+        print("⚠️ 未知訊號，略過")
 
     return 'OK'
 
