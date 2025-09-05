@@ -5,9 +5,9 @@ app = Flask(__name__)
 
 # 初始化 IG API（請改成你的憑證）
 ig = IGTrader(
-    api_key="你的APIKEY",
-    username="你的帳號",
-    password="你的密碼",
+    api_key="2cf23e4c88a23770faaf86d6399541f411884430",
+    username="Dknj3214",
+    password="Dknj3213",
     account_type="DEMO"  # 或 "LIVE"
 )
 
