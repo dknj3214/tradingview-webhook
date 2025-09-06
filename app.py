@@ -4,8 +4,12 @@ import os
 
 app = Flask(__name__)
 
-# 你要交易的商品 (範例 EURUSD CFD)
-EPIC = "CS.D.EURUSD.CFD.IP"
+# TradingView ticker → IG EPIC 映射
+TICKER_MAP = {
+    "EURUSD": "CS.D.EURUSD.CFD.IP",
+    "GBPUSD": "CS.D.GBPUSD.CFD.IP",
+    "BTCUSD": "CS.D.BTCUSD.CFD.IP"
+}
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -14,7 +18,7 @@ def webhook():
 
     action = data.get("action", "").lower()
     size = float(data.get("size", 0))  # 預設 0 手
-    ticker = data.get("ticker", "")
+    ticker = data.get("ticker", "").upper()  # 確保大寫
     position_size = data.get("position_size", 0)
 
     print(f"👉 action={action}, size={size}, ticker={ticker}, position_size={position_size}")
@@ -22,6 +26,12 @@ def webhook():
     if size <= 0:
         print("⚠️ size 為 0 或無效，略過下單")
         return "Ignored", 200
+
+    # 轉換 ticker 成 IG EPIC
+    epic = TICKER_MAP.get(ticker)
+    if not epic:
+        print(f"⚠️ 找不到對應 EPIC，略過下單: {ticker}")
+        return "Unknown ticker", 400
 
     try:
         print("🔑 嘗試登入 IG API...")
@@ -33,13 +43,13 @@ def webhook():
         )
         print(f"✅ IG 登入成功，帳號 ID：{ig.account_id}")
 
-        payload_info = f"EPIC={EPIC}, direction={action.upper()}, size={size}"
+        payload_info = f"EPIC={epic}, direction={action.upper()}, size={size}"
         print("📦 下單資訊:", payload_info)
 
         if action == "buy":
-            ig.place_order(EPIC, direction="BUY", size=size)
+            ig.place_order(epic, direction="BUY", size=size)
         elif action == "sell":
-            ig.place_order(EPIC, direction="SELL", size=size)
+            ig.place_order(epic, direction="SELL", size=size)
         else:
             print("⚠️ 未知訊號，略過下單")
 
