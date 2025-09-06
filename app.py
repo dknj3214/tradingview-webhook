@@ -13,15 +13,15 @@ def webhook():
     print("📩 收到 TradingView 訊號：", data)
 
     action = data.get("action", "").lower()
-    size = float(data.get("size", 0))  # 預設 1 手
+    size = float(data.get("size", 1))  # 預設 1 手
 
     try:
         # 每次訊號來才建立 IG 連線
         ig = IGTrader(
-            api_key=os.getenv("2cf23e4c88a23770faaf86d6399541f411884430"),
-            username=os.getenv("Dknj3214"),
-            password=os.getenv("Dknj3213"),
-            account_type=os.getenv("DEMO", "DEMO")
+            api_key=os.getenv("IG_API_KEY"),
+            username=os.getenv("IG_USERNAME"),
+            password=os.getenv("IG_PASSWORD"),
+            account_type=os.getenv("IG_ACCOUNT_TYPE", "DEMO")
         )
 
         if action == "buy":
