@@ -50,7 +50,8 @@ class IGTrader:
             "forceOpen": True,
             "guaranteedStop": False,
             "timeInForce": "FILL_OR_KILL",
-            "dealReference": "tv_auto_order"
+            "dealReference": "tv_auto_order",
+            "expiry": "-"
         }
 
         headers = self.headers.copy()
@@ -62,3 +63,4 @@ class IGTrader:
             print(f"❌ 下單失敗：{response.status_code} {response.text}")
         else:
             print("✅ 成功下單：", response.json())
+
