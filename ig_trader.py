@@ -13,7 +13,7 @@ class IGTrader:
             "Content-Type": "application/json; charset=UTF-8",
             "Accept": "application/json; charset=UTF-8"
         }
-        self._login()  # 建立物件時就自動登入
+        self._login()
 
     def _login(self):
         """登入 IG API"""
@@ -22,15 +22,14 @@ class IGTrader:
             "identifier": self.username,
             "password": self.password
         }
+        resp = self.session.post(url, json=payload, headers=self.headers)
+        if resp.status_code != 200:
+            raise Exception(f"登入失敗：{resp.status_code} {resp.text}")
 
-        response = self.session.post(url, json=payload, headers=self.headers)
-        if response.status_code != 200:
-            raise Exception(f"登入失敗：{response.status_code} {response.text}")
+        self.headers["X-SECURITY-TOKEN"] = resp.headers["X-SECURITY-TOKEN"]
+        self.headers["CST"] = resp.headers["CST"]
 
-        self.headers["X-SECURITY-TOKEN"] = response.headers["X-SECURITY-TOKEN"]
-        self.headers["CST"] = response.headers["CST"]
-
-        account_info = response.json()
+        account_info = resp.json()
         self.account_id = account_info["accounts"][0]["accountId"]
         print(f"✅ 登入成功，帳號 ID：{self.account_id}")
 
@@ -49,7 +48,6 @@ class IGTrader:
             "dealReference": "tv_auto_order",
             "expiry": "-"
         }
-
         headers = self.headers.copy()
         headers["Version"] = "2"
 
@@ -71,17 +69,20 @@ class IGTrader:
 
     def close_position(self, deal_id, direction, size):
         """平倉"""
-        url = f"{self.base_url}/positions/otc/{deal_id}"
+        url = self.base_url + "/positions/otc"
         payload = {
+            "dealId": deal_id,
+            "direction": direction.upper(),  # 反向方向
             "size": size,
-            "direction": direction.upper(),
             "orderType": "MARKET",
             "dealReference": f"close-{deal_id}"
         }
         headers = self.headers.copy()
         headers["Version"] = "2"
-        response = self.session.delete(url, json=payload, headers=headers)
-        if response.status_code not in [200, 201]:
-            print(f"❌ 平倉失敗：{response.status_code} {response.text}")
+
+        # 平倉使用 POST 請求
+        resp = self.session.post(url, json=payload, headers=headers)
+        if resp.status_code not in [200, 201]:
+            print(f"❌ 平倉失敗：{resp.status_code} {resp.text}")
         else:
-            print("✅ 成功平倉：", response.json())
+            print("✅ 成功平倉：", resp.json())
