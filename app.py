@@ -14,27 +14,37 @@ def webhook():
 
     action = data.get("action", "").lower()
     size = float(data.get("size", 0))  # 預設 0 手
+    ticker = data.get("ticker", "")
+    position_size = data.get("position_size", 0)
+
+    print(f"👉 action={action}, size={size}, ticker={ticker}, position_size={position_size}")
+
+    if size <= 0:
+        print("⚠️ size 為 0 或無效，略過下單")
+        return "Ignored", 200
 
     try:
-        # 每次訊號來才建立 IG 連線
+        print("🔑 嘗試登入 IG API...")
         ig = IGTrader(
             api_key=os.getenv("IG_API_KEY"),
             username=os.getenv("IG_USERNAME"),
             password=os.getenv("IG_PASSWORD"),
             account_type=os.getenv("IG_ACCOUNT_TYPE", "DEMO")
         )
+        print(f"✅ IG 登入成功，帳號 ID：{ig.account_id}")
+
+        payload_info = f"EPIC={EPIC}, direction={action.upper()}, size={size}"
+        print("📦 下單資訊:", payload_info)
 
         if action == "buy":
-            print(f"🚀 執行買單：{size} 手")
             ig.place_order(EPIC, direction="BUY", size=size)
         elif action == "sell":
-            print(f"🔻 執行賣單：{size} 手")
             ig.place_order(EPIC, direction="SELL", size=size)
         else:
-            print("⚠️ 未知訊號，略過")
+            print("⚠️ 未知訊號，略過下單")
 
     except Exception as e:
-        print(f"❌ 執行錯誤：{e}")
+        print(f"❌ webhook 執行錯誤：{e}")
         return f"Error: {e}", 500
 
     return 'OK'
