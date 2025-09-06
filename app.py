@@ -22,9 +22,6 @@ TICKER_MAP = {
 # =============================
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    # -----------------------------
-    # 解析收到的 JSON 資料
-    # -----------------------------
     data = request.json
     print("📩 收到 TradingView 訊號：", data)
 
@@ -34,25 +31,15 @@ def webhook():
 
     print(f"👉 action={action}, size={size}, ticker={ticker}")
 
-    # -----------------------------
-    # 檢查 size 是否有效
-    # -----------------------------
     if size <= 0:
         print("⚠️ size 無效，略過下單")
         return "Ignored", 200
 
-    # -----------------------------
-    # 轉換 TradingView ticker → IG EPIC
-    # -----------------------------
     epic = TICKER_MAP.get(ticker)
     if not epic:
         print(f"⚠️ 找不到對應 EPIC: {ticker}")
         return "Unknown ticker", 400
 
-    # =============================
-    # 下單區塊
-    # 每次 webhook 收到訊號才登入 IG
-    # =============================
     try:
         ig = IGTrader(
             api_key=os.getenv("IG_API_KEY"),
@@ -82,7 +69,8 @@ def webhook():
 
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
                 print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}")
-                ig.close_position(deal_id, direction=action.upper(), size=pos_size)
+                # 呼叫平倉方法，方向用現有倉位
+                ig.close_position(deal_id, size=pos_size, direction=pos_dir)
                 print("✅ 已平倉，Webhook 結束")
                 return "Closed", 200  # 平倉後不開新單
 
@@ -107,5 +95,5 @@ def webhook():
 # Flask Server 啟動
 # =============================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # Render 上通常用環境變數 PORT
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
