@@ -13,7 +13,7 @@ def webhook():
     print("📩 收到 TradingView 訊號：", data)
 
     action = data.get("action", "").lower()
-    size = float(data.get("size", 1))  # 預設 1 手
+    size = float(data.get("size", 0))  # 預設 0 手
 
     try:
         # 每次訊號來才建立 IG 連線
