@@ -6,24 +6,27 @@ class IGTrader:
         self.username = username
         self.password = password
         self.account_type = account_type.upper()
-        self.base_url = "https://demo-api.ig.com/gateway/deal" if self.account_type=="DEMO" else "https://api.ig.com/gateway/deal"
+        self.base_url = "https://demo-api.ig.com/gateway/deal" if self.account_type == "DEMO" else "https://api.ig.com/gateway/deal"
         self.session = requests.Session()
         self.headers = {
             "X-IG-API-KEY": self.api_key,
             "Content-Type": "application/json; charset=UTF-8",
             "Accept": "application/json; charset=UTF-8"
         }
-        self._login()
+        self._login()  # 建立物件時就自動登入
 
     def _login(self):
         """登入 IG API"""
         url = self.base_url + "/session"
-        payload = {"identifier": self.username, "password": self.password}
+        payload = {
+            "identifier": self.username,
+            "password": self.password
+        }
+
         response = self.session.post(url, json=payload, headers=self.headers)
         if response.status_code != 200:
             raise Exception(f"登入失敗：{response.status_code} {response.text}")
 
-        # 更新 headers 加入 token
         self.headers["X-SECURITY-TOKEN"] = response.headers["X-SECURITY-TOKEN"]
         self.headers["CST"] = response.headers["CST"]
 
@@ -32,7 +35,7 @@ class IGTrader:
         print(f"✅ 登入成功，帳號 ID：{self.account_id}")
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
-        """下新單"""
+        """下單"""
         url = self.base_url + "/positions/otc"
         payload = {
             "epic": epic,
@@ -40,59 +43,46 @@ class IGTrader:
             "size": size,
             "orderType": order_type,
             "currencyCode": "USD",
-            "forceOpen": True,          # 新單開倉
+            "forceOpen": True,
             "guaranteedStop": False,
             "timeInForce": "FILL_OR_KILL",
             "dealReference": "tv_auto_order",
             "expiry": "-"
         }
+
         headers = self.headers.copy()
         headers["Version"] = "2"
-        response = self.session.post(url, json=payload, headers=headers)
-        if response.status_code not in [200, 201]:
-            print(f"❌ 下單失敗：{response.status_code} {response.text}")
-        else:
-            print("✅ 成功下單：", response.json())
 
-    def get_open_position(self, epic):
-        """回傳該 EPIC 的持倉資訊，沒有則回 None"""
+        resp = self.session.post(url, json=payload, headers=headers)
+        if resp.status_code not in [200, 201]:
+            print(f"❌ 下單失敗：{resp.status_code} {resp.text}")
+        else:
+            print("✅ 成功下單：", resp.json())
+
+    def get_positions(self):
+        """取得所有持倉"""
         url = self.base_url + "/positions"
         headers = self.headers.copy()
-        headers["Version"] = "2"
-        response = self.session.get(url, headers=headers)
-        if response.status_code != 200:
-            print("❌ 查詢持倉失敗：", response.text)
-            return None
+        headers["Version"] = "1"
+        resp = self.session.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise Exception(f"查詢持倉失敗：{resp.status_code} {resp.text}")
+        return resp.json()["positions"]
 
-        positions = response.json().get("positions", [])
-        for pos in positions:
-            if pos["market"]["epic"] == epic:
-                return {
-                    "direction": pos["position"]["direction"],  # "BUY" 或 "SELL"
-                    "size": pos["position"]["dealSize"],
-                    "dealId": pos["position"]["dealId"]
-                }
-        return None
-
-    def close_position(self, epic, direction, size, deal_reference="tv_close"):
+    def close_position(self, deal_id, direction, size):
         """平倉"""
         url = self.base_url + "/positions/otc"
         payload = {
-            "epic": epic,
+            "dealId": deal_id,
             "direction": direction.upper(),
             "size": size,
             "orderType": "MARKET",
-            "currencyCode": "USD",
-            "forceOpen": False,       # ⚠️ 關鍵，反向單會平倉
-            "guaranteedStop": False,
-            "timeInForce": "FILL_OR_KILL",
-            "dealReference": deal_reference,
-            "expiry": "-"
+            "dealReference": f"close-{deal_id}"
         }
         headers = self.headers.copy()
         headers["Version"] = "2"
-        response = self.session.post(url, json=payload, headers=headers)
-        if response.status_code not in [200, 201]:
-            print(f"❌ 平倉失敗：{response.status_code} {response.text}")
+        resp = self.session.delete(url, json=payload, headers=headers)
+        if resp.status_code not in [200, 201]:
+            print(f"❌ 平倉失敗：{resp.status_code} {resp.text}")
         else:
-            print("✅ 已平倉：", response.json())
+            print("✅ 平倉成功：", resp.json())
