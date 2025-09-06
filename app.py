@@ -48,8 +48,9 @@ def webhook():
 
         # 平倉邏輯：若持倉方向與訊號相反
         if current_pos:
+            current_pos = pos["position"]
             pos_dir = current_pos["direction"]
-            pos_size = current_pos["dealSize"]
+            pos_size = current_pos.get("size", 0)
             deal_id = current_pos["dealId"]
 
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
