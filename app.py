@@ -33,9 +33,8 @@ def webhook():
     action = data.get("action", "").lower()             # 買或賣
     size = float(data.get("size", 0))                  # 手數
     ticker = data.get("ticker", "").upper()           # 商品代碼
-    position_size = data.get("position_size", 0)      # 未使用，可擴充
 
-    print(f"👉 action={action}, size={size}, ticker={ticker}, position_size={position_size}")
+    print(f"👉 action={action}, size={size}, ticker={ticker}")
 
     # -----------------------------
     # 檢查 size 是否有效
