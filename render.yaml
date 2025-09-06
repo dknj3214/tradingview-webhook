@@ -8,3 +8,11 @@ services:
     envVars:
       - key: PORT
         value: 10000
+      - key: IG_API_KEY
+        sync: false
+      - key: IG_USERNAME
+        sync: false
+      - key: IG_PASSWORD
+        sync: false
+      - key: IG_ACCOUNT_TYPE
+        value: DEMO
