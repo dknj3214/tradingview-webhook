@@ -67,22 +67,23 @@ class IGTrader:
             raise Exception(f"查詢持倉失敗：{resp.status_code} {resp.text}")
         return resp.json()["positions"]
 
-    def close_position(self, deal_id, direction, size):
-        """平倉"""
+   def close_position(self, deal_id, size, direction):
+        """平倉 OTC CFD"""
         url = self.base_url + "/positions/otc"
         payload = {
             "dealId": deal_id,
-            "direction": direction.upper(),  # 反向方向
             "size": size,
+            "direction": direction.upper(),  # 與現有倉位方向一致
             "orderType": "MARKET",
+            "forceOpen": False,              # 平倉一定要 False
             "dealReference": f"close-{deal_id}"
         }
         headers = self.headers.copy()
         headers["Version"] = "2"
-
-        # 平倉使用 POST 請求
+    
         resp = self.session.post(url, json=payload, headers=headers)
         if resp.status_code not in [200, 201]:
             print(f"❌ 平倉失敗：{resp.status_code} {resp.text}")
         else:
             print("✅ 成功平倉：", resp.json())
+    
