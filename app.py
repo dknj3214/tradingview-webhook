@@ -2,34 +2,57 @@ from flask import Flask, request
 from ig_trader import IGTrader
 import os
 
+# =============================
+# Flask Webhook Server 初始化
+# =============================
 app = Flask(__name__)
 
+# =============================
+# TradingView ticker → IG EPIC 映射表
+# =============================
 TICKER_MAP = {
     "EURUSD": "CS.D.EURUSD.CFD.IP",
     "GBPUSD": "CS.D.GBPUSD.CFD.IP",
     "BTCUSD": "CS.D.BITCOIN.CFD.IP"
 }
 
+# =============================
+# Webhook Endpoint
+# TradingView 快訊會 POST JSON 到這裡
+# =============================
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    # -----------------------------
+    # 解析收到的 JSON 資料
+    # -----------------------------
     data = request.json
     print("📩 收到 TradingView 訊號：", data)
 
-    action = data.get("action", "").lower()
-    size = float(data.get("size", 0))
-    ticker = data.get("ticker", "").upper()
+    action = data.get("action", "").lower()      # buy 或 sell
+    size = float(data.get("size", 0))           # 手數
+    ticker = data.get("ticker", "").upper()     # 商品代碼
 
     print(f"👉 action={action}, size={size}, ticker={ticker}")
 
+    # -----------------------------
+    # 檢查 size 是否有效
+    # -----------------------------
     if size <= 0:
         print("⚠️ size 無效，略過下單")
         return "Ignored", 200
 
+    # -----------------------------
+    # 轉換 TradingView ticker → IG EPIC
+    # -----------------------------
     epic = TICKER_MAP.get(ticker)
     if not epic:
         print(f"⚠️ 找不到對應 EPIC: {ticker}")
         return "Unknown ticker", 400
 
+    # =============================
+    # 下單區塊
+    # 每次 webhook 收到訊號才登入 IG
+    # =============================
     try:
         ig = IGTrader(
             api_key=os.getenv("IG_API_KEY"),
@@ -38,7 +61,9 @@ def webhook():
             account_type=os.getenv("IG_ACCOUNT_TYPE", "DEMO")
         )
 
+        # -----------------------------
         # 查詢現有持倉
+        # -----------------------------
         positions = ig.get_positions()
         current_pos = None
         for pos in positions:
@@ -46,19 +71,24 @@ def webhook():
                 current_pos = pos["position"]
                 break
 
+        # -----------------------------
         # 平倉邏輯：若持倉方向與訊號相反
+        # 平倉後不開新單
+        # -----------------------------
         if current_pos:
-            current_pos = pos["position"]
-            pos_dir = current_pos["direction"]
+            pos_dir = current_pos["direction"]  # "BUY" 或 "SELL"
             pos_size = current_pos.get("size", 0)
             deal_id = current_pos["dealId"]
 
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
                 print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}")
                 ig.close_position(deal_id, direction=action.upper(), size=pos_size)
+                print("✅ 已平倉，Webhook 結束")
                 return "Closed", 200  # 平倉後不開新單
 
+        # -----------------------------
         # 沒有持倉 → 開新單
+        # -----------------------------
         if not current_pos:
             print(f"📦 下單資訊: EPIC={epic}, direction={action.upper()}, size={size}")
             if action == "buy":
@@ -72,6 +102,10 @@ def webhook():
 
     return "OK"
 
+
+# =============================
+# Flask Server 啟動
+# =============================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 10000))  # Render 上通常用環境變數 PORT
     app.run(host="0.0.0.0", port=port)
