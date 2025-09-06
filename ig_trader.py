@@ -71,18 +71,17 @@ class IGTrader:
 
     def close_position(self, deal_id, direction, size):
         """平倉"""
-        url = self.base_url + "/positions/otc"
+        url = f"{self.base_url}/positions/otc/{deal_id}"
         payload = {
-            "dealId": deal_id,
-            "direction": direction.upper(),
             "size": size,
+            "direction": direction.upper(),
             "orderType": "MARKET",
             "dealReference": f"close-{deal_id}"
         }
         headers = self.headers.copy()
         headers["Version"] = "2"
-        resp = self.session.delete(url, json=payload, headers=headers)
-        if resp.status_code not in [200, 201]:
-            print(f"❌ 平倉失敗：{resp.status_code} {resp.text}")
+        response = self.session.delete(url, json=payload, headers=headers)
+        if response.status_code not in [200, 201]:
+            print(f"❌ 平倉失敗：{response.status_code} {response.text}")
         else:
-            print("✅ 平倉成功：", resp.json())
+            print("✅ 成功平倉：", response.json())
