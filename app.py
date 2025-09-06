@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 # =============================
 # TradingView ticker → IG EPIC 映射表
-# 用來把 TradingView 快訊的 ticker 轉成 IG 下單需要的 EPIC
+# 將 TradingView 快訊的 ticker 轉成 IG 下單需要的 EPIC
 # =============================
 TICKER_MAP = {
     "EURUSD": "CS.D.EURUSD.CFD.IP",
@@ -29,10 +29,9 @@ def webhook():
     data = request.json
     print("📩 收到 TradingView 訊號：", data)
 
-    # 取得快訊中的關鍵欄位
-    action = data.get("action", "").lower()             # 買或賣
-    size = float(data.get("size", 0))                  # 手數
-    ticker = data.get("ticker", "").upper()           # 商品代碼
+    action = data.get("action", "").lower()      # buy 或 sell
+    size = float(data.get("size", 0))           # 手數
+    ticker = data.get("ticker", "").upper()     # 商品代碼
 
     print(f"👉 action={action}, size={size}, ticker={ticker}")
 
@@ -58,7 +57,7 @@ def webhook():
     try:
         print("🔑 嘗試登入 IG API...")
         ig = IGTrader(
-            api_key=os.getenv("IG_API_KEY"),         # 從環境變數讀取
+            api_key=os.getenv("IG_API_KEY"),
             username=os.getenv("IG_USERNAME"),
             password=os.getenv("IG_PASSWORD"),
             account_type=os.getenv("IG_ACCOUNT_TYPE", "DEMO")  # 預設 DEMO
@@ -66,20 +65,45 @@ def webhook():
         print(f"✅ IG 登入成功，帳號 ID：{ig.account_id}")
 
         # -----------------------------
-        # 印出下單資訊
+        # 先檢查是否已有持倉
         # -----------------------------
-        payload_info = f"EPIC={epic}, direction={action.upper()}, size={size}"
-        print("📦 下單資訊:", payload_info)
+        positions = ig.client.all_positions()["positions"]
+        current_pos = None
+        for pos in positions:
+            if pos["market"]["epic"] == epic:
+                current_pos = pos["position"]
+                break
 
         # -----------------------------
-        # 執行下單
+        # 若有持倉且收到反向訊號 → 平倉
+        # 平倉後不開新單
         # -----------------------------
-        if action == "buy":
-            ig.place_order(epic, direction="BUY", size=size)
-        elif action == "sell":
-            ig.place_order(epic, direction="SELL", size=size)
-        else:
-            print("⚠️ 未知訊號，略過下單")
+        if current_pos:
+            pos_dir = current_pos["direction"]  # "BUY" 或 "SELL"
+            pos_size = current_pos["dealSize"]
+            deal_id = current_pos["dealId"]
+
+            if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
+                print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}")
+                ig.client.close_position(
+                    deal_id=deal_id,
+                    direction=action.upper(),
+                    size=pos_size,
+                    orderType="MARKET",
+                    dealReference=f"close-{deal_id}"
+                )
+                print("✅ 已平倉，Webhook 結束")
+                return "Closed", 200  # 平倉後不開新單
+
+        # -----------------------------
+        # 沒有持倉 → 開新單
+        # -----------------------------
+        if not current_pos:
+            print(f"📦 下單資訊: EPIC={epic}, direction={action.upper()}, size={size}")
+            if action == "buy":
+                ig.place_order(epic, direction="BUY", size=size)
+            elif action == "sell":
+                ig.place_order(epic, direction="SELL", size=size)
 
     # -----------------------------
     # 捕捉所有錯誤，避免 webhook 崩潰
