@@ -14,7 +14,7 @@ app = Flask(__name__)
 TICKER_MAP = {
     "EURUSD": "CS.D.EURUSD.CFD.IP",
     "GBPUSD": "CS.D.GBPUSD.CFD.IP",
-    "BTCUSD": "CS.D.BTCUSD.CFD.IP"
+    "BTCUSD": "CS.D.BITCOIN.CFD.IP"
 }
 
 # =============================
