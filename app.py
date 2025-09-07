@@ -157,6 +157,14 @@ def webhook():
 
                 # 平倉後開新單
                 new_dir = "BUY" if action == "buy" else "SELL"
+                positions = ig.get_positions()
+                print("🔹 現有持倉數量：", len(positions))
+                for pos in positions:
+                    print("EPIC:", pos["market"]["epic"])
+                    print("方向:", pos["position"]["direction"])
+                    print("Size:", pos["position"]["size"])
+                    print("DealId:", pos["position"].get("dealId"))
+                    print("---")
                 print(f"📦 平倉後開新單: EPIC={epic}, direction={new_dir}, size={size}")
                 ig.place_order(epic, direction=new_dir, size=size)
                 return "Closed and New Order Placed", 200
