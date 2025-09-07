@@ -69,21 +69,21 @@ def webhook():
         for pos in positions:
             if pos["market"]["epic"] == epic:
                 current_pos = pos["position"]
+                print("📌 找到持倉:", current_pos)
                 break
 
         # -----------------------------
-        # 平倉邏輯：若持倉方向與訊號相反
+        # 平倉邏輯：直接用反向下單
         # -----------------------------
         if current_pos:
             pos_dir = current_pos["direction"]  # "BUY" 或 "SELL"
             pos_size = round(float(current_pos.get("size", 0)), 2)
-            deal_id = current_pos["dealId"]
 
-            # 平倉方向必須與現有倉位相反
-            close_dir = "SELL" if pos_dir == "BUY" else "BUY"
+            # 判斷是否需要平倉
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
-                print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}, direction={close_dir}")
-                ig.close_position(deal_id, size=pos_size, direction=close_dir)
+                close_dir = "SELL" if pos_dir == "BUY" else "BUY"
+                print(f"🛑 平倉 {epic}, size={pos_size}, direction={close_dir}")
+                ig.place_order(epic, direction=close_dir, size=pos_size)
                 print("✅ 已平倉，Webhook 結束")
                 return "Closed", 200
 
