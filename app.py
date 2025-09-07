@@ -1,15 +1,101 @@
 from flask import Flask, request
-from ig_trader import IGTrader
+import requests
 import os
+
+# =============================
+# IGTrader 類
+# =============================
+class IGTrader:
+    def __init__(self, api_key, username, password, account_type="DEMO"):
+        self.api_key = api_key
+        self.username = username
+        self.password = password
+        self.account_type = account_type.upper()
+        self.base_url = "https://demo-api.ig.com/gateway/deal" if self.account_type == "DEMO" else "https://api.ig.com/gateway/deal"
+        self.session = requests.Session()
+        self.headers = {
+            "X-IG-API-KEY": self.api_key,
+            "Content-Type": "application/json; charset=UTF-8",
+            "Accept": "application/json; charset=UTF-8"
+        }
+        self._login()
+
+    def _login(self):
+        url = self.base_url + "/session"
+        payload = {"identifier": self.username, "password": self.password}
+        resp = self.session.post(url, json=payload, headers=self.headers)
+        if resp.status_code != 200:
+            raise Exception(f"登入失敗：{resp.status_code} {resp.text}")
+        self.headers["X-SECURITY-TOKEN"] = resp.headers["X-SECURITY-TOKEN"]
+        self.headers["CST"] = resp.headers["CST"]
+        account_info = resp.json()
+        self.account_id = account_info["accounts"][0]["accountId"]
+        print(f"✅ 登入成功，帳號 ID：{self.account_id}")
+
+    def place_order(self, epic, direction, size=1, order_type="MARKET"):
+        url = self.base_url + "/positions/otc"
+        payload = {
+            "epic": epic,
+            "direction": direction.upper(),
+            "size": size,
+            "orderType": order_type,
+            "currencyCode": "USD",
+            "forceOpen": True,
+            "guaranteedStop": False,
+            "timeInForce": "FILL_OR_KILL",
+            "dealReference": "tv_auto_order",
+            "expiry": "-"
+        }
+        headers = self.headers.copy()
+        headers["Version"] = "2"
+        resp = self.session.post(url, json=payload, headers=headers)
+        if resp.status_code not in [200, 201]:
+            print(f"❌ 下單失敗：{resp.status_code} {resp.text}")
+        else:
+            print("✅ 成功下單：", resp.json())
+
+    def get_positions(self):
+        url = self.base_url + "/positions"
+        headers = self.headers.copy()
+        headers["Version"] = "1"
+        resp = self.session.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise Exception(f"查詢持倉失敗：{resp.status_code} {resp.text}")
+        return resp.json()["positions"]
+
+    def close_position(self, deal_id, direction, size):
+        url = self.base_url + "/positions/otc"
+        payload = {
+            "dealId": deal_id,
+            "direction": direction.upper(),
+            "size": size,
+            "orderType": "MARKET",
+            "forceOpen": False,
+            "dealReference": f"close-{deal_id}"
+        }
+        headers = self.headers.copy()
+        headers["Version"] = "2"
+        resp = self.session.post(url, json=payload, headers=headers)
+        if resp.status_code not in [200, 201]:
+            print(f"❌ 平倉失敗：{resp.status_code} {resp.text}")
+        else:
+            print("✅ 成功平倉：", resp.json())
+
+    def get_market_info(self, epic):
+        url = self.base_url + f"/markets/{epic}"
+        headers = self.headers.copy()
+        headers["Version"] = "3"
+        resp = self.session.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise Exception(f"查詢商品資訊失敗：{resp.status_code} {resp.text}")
+        return resp.json()
 
 # =============================
 # Flask Webhook Server 初始化
 # =============================
 app = Flask(__name__)
 
-# =============================
 # TradingView ticker → IG EPIC 映射表
-# =============================
 TICKER_MAP = {
     "EURUSD": "CS.D.EURUSD.CFD.IP",
     "GBPUSD": "CS.D.GBPUSD.CFD.IP",
@@ -18,26 +104,21 @@ TICKER_MAP = {
 
 # =============================
 # Webhook Endpoint
-# TradingView 快訊會 POST JSON 到這裡
 # =============================
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
     print("📩 收到 TradingView 訊號：", data)
 
-    action = data.get("action", "").lower()      # buy 或 sell
-    raw_size = float(data.get("size", 0))        # 原始 size
-    ticker = data.get("ticker", "").upper()      # 商品代碼
-
-    print(f"👉 action={action}, raw_size={raw_size}, ticker={ticker}")
+    action = data.get("action", "").lower()
+    raw_size = float(data.get("size", 0))
+    ticker = data.get("ticker", "").upper()
 
     if raw_size <= 0:
-        print("⚠️ size 無效，略過下單")
         return "Ignored", 200
 
     epic = TICKER_MAP.get(ticker)
     if not epic:
-        print(f"⚠️ 找不到對應 EPIC: {ticker}")
         return "Unknown ticker", 400
 
     try:
@@ -48,61 +129,54 @@ def webhook():
             account_type=os.getenv("IG_ACCOUNT_TYPE", "DEMO")
         )
 
-        # -----------------------------
-        # 查詢商品規格 (決定最小單位)
-        # -----------------------------
         market_info = ig.get_market_info(epic)
         min_size = float(market_info["dealingRules"]["minDealSize"]["value"])
+        size = max(round(raw_size, 2), min_size)
 
-        # 修正 size
-        size = round(raw_size, 2)
-        if size < min_size:
-            size = min_size
-
-        print(f"✅ 修正後下單 size={size} (最小單位={min_size})")
-
-        # -----------------------------
-        # 查詢現有持倉
-        # -----------------------------
         positions = ig.get_positions()
         current_pos = None
         for pos in positions:
             if pos["market"]["epic"] == epic:
                 current_pos = pos["position"]
-                print("📌 找到持倉:", current_pos)
                 break
 
         # -----------------------------
-        # 平倉邏輯：直接用反向下單
+        # 平倉邏輯（全部平倉）
         # -----------------------------
         if current_pos:
-            pos_dir = current_pos["direction"]  # "BUY" 或 "SELL"
-            pos_size = round(float(current_pos.get("size", 0)), 2)
+            pos_dir = current_pos["direction"]      # BUY / SELL
+            pos_size = float(current_pos.get("size", 0))
+            deal_id = current_pos.get("dealId")
 
-            # 判斷是否需要平倉
+            # 方向相反 → 平倉
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
-                close_dir = "SELL" if pos_dir == "BUY" else "BUY"
+                close_dir = pos_dir  # 與現有倉同方向
                 print(f"🛑 平倉 {epic}, size={pos_size}, direction={close_dir}")
-                ig.place_order(epic, direction=close_dir, size=pos_size)
-                print("✅ 已平倉，Webhook 結束")
-                return "Closed", 200
+                ig.close_position(deal_id, direction=close_dir, size=pos_size)
+                print("✅ 平倉完成")
+
+                # 平倉後開新單
+                new_dir = "BUY" if action == "buy" else "SELL"
+                print(f"📦 平倉後開新單: EPIC={epic}, direction={new_dir}, size={size}")
+                ig.place_order(epic, direction=new_dir, size=size)
+                return "Closed and New Order Placed", 200
+
+            # 同方向持倉 → 忽略，不開新單
+            print(f"⚡ 已有同方向持倉，略過下單: {pos_dir}")
+            return "Existing position same direction, ignored", 200
 
         # -----------------------------
         # 沒有持倉 → 開新單
         # -----------------------------
-        if not current_pos:
-            print(f"📦 下單資訊: EPIC={epic}, direction={action.upper()}, size={size}")
-            if action == "buy":
-                ig.place_order(epic, direction="BUY", size=size)
-            elif action == "sell":
-                ig.place_order(epic, direction="SELL", size=size)
+        new_dir = "BUY" if action == "buy" else "SELL"
+        print(f"📦 下單資訊: EPIC={epic}, direction={new_dir}, size={size}")
+        ig.place_order(epic, direction=new_dir, size=size)
 
     except Exception as e:
         print(f"❌ webhook 執行錯誤：{e}")
         return f"Error: {e}", 500
 
     return "OK"
-
 
 # =============================
 # Flask Server 啟動
