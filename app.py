@@ -26,7 +26,7 @@ def webhook():
     print("📩 收到 TradingView 訊號：", data)
 
     action = data.get("action", "").lower()      # buy 或 sell
-    size = float(data.get("size", 0))           # 手數
+    size = round(float(data.get("size", 0)), 2)          # 手數
     ticker = data.get("ticker", "").upper()     # 商品代碼
 
     print(f"👉 action={action}, size={size}, ticker={ticker}")
