@@ -75,21 +75,17 @@ def webhook():
         # 平倉邏輯：若持倉方向與訊號相反
         # -----------------------------
         if current_pos:
-            pos_dir = current_pos["direction"]  # 現有持倉方向
+            pos_dir = current_pos["direction"]  # "BUY" 或 "SELL"
+            pos_size = round(float(current_pos.get("size", 0)), 2)
             deal_id = current_pos["dealId"]
-            pos_size = float(current_pos.get("size", 0))
 
-            print(f"💼 現有持倉: dealId={deal_id}, direction={pos_dir}, size={pos_size}")
-
-            # 判斷是否需要平倉
+            # 平倉方向必須與現有倉位相反
+            close_dir = "SELL" if pos_dir == "BUY" else "BUY"
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
-                if pos_size > 0:
-                    ig.close_position(deal_id, size=pos_size, direction=pos_dir)
-                    print("✅ 已平倉")
-                    return "Closed", 200
-                else:
-                    print("⚠️ 持倉 size 為 0，無法平倉")
-                    return "Ignored", 200
+                print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}, direction={close_dir}")
+                ig.close_position(deal_id, size=pos_size, direction=close_dir)
+                print("✅ 已平倉，Webhook 結束")
+                return "Closed", 200
 
         # -----------------------------
         # 沒有持倉 → 開新單
@@ -106,6 +102,7 @@ def webhook():
         return f"Error: {e}", 500
 
     return "OK"
+
 
 # =============================
 # Flask Server 啟動
