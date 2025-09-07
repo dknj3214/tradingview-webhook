@@ -49,18 +49,17 @@ def webhook():
         )
 
         # -----------------------------
-        # 查詢商品規格 (決定小數位數 & 最小下單單位)
+        # 查詢商品規格 (決定最小單位)
         # -----------------------------
         market_info = ig.get_market_info(epic)
-        min_size = market_info["dealingRules"]["minDealSize"]["value"]
-        decimal_places = market_info["dealingRules"]["minDealSize"]["unit"]["precision"]
+        min_size = float(market_info["dealingRules"]["minDealSize"]["value"])
 
-        # 修正下單數量
-        size = round(raw_size, decimal_places)
+        # ⚠️ IG API 沒有 precision，這裡直接用 2 位小數保險處理
+        size = round(raw_size, 2)
         if size < min_size:
             size = min_size
 
-        print(f"✅ 修正後下單 size={size} (最小單位={min_size}, 小數位={decimal_places})")
+        print(f"✅ 修正後下單 size={size} (最小單位={min_size})")
 
         # -----------------------------
         # 查詢現有持倉
