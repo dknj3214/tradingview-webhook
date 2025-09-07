@@ -54,7 +54,7 @@ def webhook():
         market_info = ig.get_market_info(epic)
         min_size = float(market_info["dealingRules"]["minDealSize"]["value"])
 
-        # ⚠️ IG API 沒有 precision，這裡直接用 2 位小數保險處理
+        # 修正 size
         size = round(raw_size, 2)
         if size < min_size:
             size = min_size
@@ -73,15 +73,16 @@ def webhook():
 
         # -----------------------------
         # 平倉邏輯：若持倉方向與訊號相反
-        # 平倉後不開新單
         # -----------------------------
         if current_pos:
             pos_dir = current_pos["direction"]  # "BUY" 或 "SELL"
-            pos_size = current_pos.get("size", 0)
             deal_id = current_pos["dealId"]
+            pos_size = round(float(current_pos.get("size", 0)), 2)
+            if pos_size < min_size:
+                pos_size = min_size
 
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
-                print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}")
+                print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}, direction={pos_dir}")
                 ig.close_position(deal_id, size=pos_size, direction=pos_dir)
                 print("✅ 已平倉，Webhook 結束")
                 return "Closed", 200  # 平倉後不開新單
@@ -101,7 +102,6 @@ def webhook():
         return f"Error: {e}", 500
 
     return "OK"
-
 
 # =============================
 # Flask Server 啟動
