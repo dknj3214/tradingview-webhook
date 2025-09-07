@@ -67,7 +67,7 @@ class IGTrader:
             raise Exception(f"查詢持倉失敗：{resp.status_code} {resp.text}")
         return resp.json()["positions"]
 
-   def close_position(self, deal_id, size, direction):
+    def close_position(self, deal_id, size, direction):
         """平倉 OTC CFD"""
         url = self.base_url + "/positions/otc"
         payload = {
@@ -86,4 +86,14 @@ class IGTrader:
             print(f"❌ 平倉失敗：{resp.status_code} {resp.text}")
         else:
             print("✅ 成功平倉：", resp.json())
-    
+            
+    def get_market_info(self, epic):
+        """查詢單一商品的規格 (最小下單單位等)"""
+        url = self.base_url + f"/markets/{epic}"
+        headers = self.headers.copy()
+        headers["Version"] = "3"
+        resp = self.session.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise Exception(f"查詢商品資訊失敗：{resp.status_code} {resp.text}")
+        return resp.json()
+
