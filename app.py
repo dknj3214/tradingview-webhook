@@ -26,12 +26,12 @@ def webhook():
     print("📩 收到 TradingView 訊號：", data)
 
     action = data.get("action", "").lower()      # buy 或 sell
-    size = round(float(data.get("size", 0)), 2)          # 手數
-    ticker = data.get("ticker", "").upper()     # 商品代碼
+    raw_size = float(data.get("size", 0))        # 原始 size
+    ticker = data.get("ticker", "").upper()      # 商品代碼
 
-    print(f"👉 action={action}, size={size}, ticker={ticker}")
+    print(f"👉 action={action}, raw_size={raw_size}, ticker={ticker}")
 
-    if size <= 0:
+    if raw_size <= 0:
         print("⚠️ size 無效，略過下單")
         return "Ignored", 200
 
@@ -47,6 +47,20 @@ def webhook():
             password=os.getenv("IG_PASSWORD"),
             account_type=os.getenv("IG_ACCOUNT_TYPE", "DEMO")
         )
+
+        # -----------------------------
+        # 查詢商品規格 (決定小數位數 & 最小下單單位)
+        # -----------------------------
+        market_info = ig.get_market_info(epic)
+        min_size = market_info["dealingRules"]["minDealSize"]["value"]
+        decimal_places = market_info["dealingRules"]["minDealSize"]["unit"]["precision"]
+
+        # 修正下單數量
+        size = round(raw_size, decimal_places)
+        if size < min_size:
+            size = min_size
+
+        print(f"✅ 修正後下單 size={size} (最小單位={min_size}, 小數位={decimal_places})")
 
         # -----------------------------
         # 查詢現有持倉
@@ -69,7 +83,6 @@ def webhook():
 
             if (pos_dir == "BUY" and action == "sell") or (pos_dir == "SELL" and action == "buy"):
                 print(f"🛑 平倉 {epic}, dealId={deal_id}, size={pos_size}")
-                # 呼叫平倉方法，方向用現有倉位
                 ig.close_position(deal_id, size=pos_size, direction=pos_dir)
                 print("✅ 已平倉，Webhook 結束")
                 return "Closed", 200  # 平倉後不開新單
