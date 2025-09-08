@@ -75,6 +75,17 @@ class IGTrader:
         return resp.json()
 
     def close_position(self, deal_id, epic, size, direction):
+        # 如果沒有給 deal_id，嘗試從持倉自動找
+        if not deal_id:
+            positions = self.get_positions()
+            for pos in positions:
+                if pos["market"]["epic"] == epic and pos["position"]["direction"].upper() == direction.upper():
+                    deal_id = pos["position"]["dealId"]
+                    size = pos["position"]["size"]
+                    break
+            else:
+                return {"error": "找不到對應持倉", "status_code": 404}
+
         url = self.base_url + "/positions/otc"
         payload = {
             "dealId": deal_id,
@@ -120,8 +131,8 @@ def api_webhook():
             return jsonify({"error": "epic and direction are required for order"}), 400
         result = trader.place_order(epic, direction, size)
     elif mode == "close":
-        if not deal_id or not epic or not direction:
-            return jsonify({"error": "dealId, epic, and direction are required for close"}), 400
+        if not epic or not direction:
+            return jsonify({"error": "epic and direction are required for close"}), 400
         result = trader.close_position(deal_id, epic, size, direction)
     elif mode == "positions":
         try:
