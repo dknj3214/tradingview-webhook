@@ -1,6 +1,5 @@
 import os
 import string
-import json
 import time
 import requests
 from flask import Flask, request, jsonify
@@ -107,35 +106,31 @@ trader = IGTrader(
     account_type=os.environ.get("IG_ACCOUNT_TYPE", "DEMO")
 )
 
-@app.route("/positions", methods=["GET"])
-def api_get_positions():
-    try:
-        positions = trader.get_positions()
-        return jsonify(positions)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/order", methods=["POST"])
-def api_place_order():
-    data = request.json
+@app.route("/webhook", methods=["POST"])
+def api_webhook():
+    data = request.json or {}
+    mode = data.get("mode")
     epic = data.get("epic")
     direction = data.get("direction")
     size = data.get("size", 1)
-    if not epic or not direction:
-        return jsonify({"error": "epic and direction are required"}), 400
-    result = trader.place_order(epic, direction, size)
-    return jsonify(result)
-
-@app.route("/close", methods=["POST"])
-def api_close_order():
-    data = request.json
     deal_id = data.get("dealId")
-    epic = data.get("epic")
-    size = data.get("size", 1)
-    direction = data.get("direction")
-    if not deal_id or not epic or not direction:
-        return jsonify({"error": "dealId, epic, and direction are required"}), 400
-    result = trader.close_position(deal_id, epic, size, direction)
+
+    if mode == "order":
+        if not epic or not direction:
+            return jsonify({"error": "epic and direction are required for order"}), 400
+        result = trader.place_order(epic, direction, size)
+    elif mode == "close":
+        if not deal_id or not epic or not direction:
+            return jsonify({"error": "dealId, epic, and direction are required for close"}), 400
+        result = trader.close_position(deal_id, epic, size, direction)
+    elif mode == "positions":
+        try:
+            result = trader.get_positions()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "unknown mode"}), 400
+
     return jsonify(result)
 
 if __name__ == "__main__":
