@@ -74,27 +74,39 @@ class IGTrader:
             return {"error": resp.text, "status_code": resp.status_code}
         return resp.json()
 
-    def close_position(self, deal_id, epic, size, direction):
+    def close_position(self, deal_id, epic, size=None):
         # 如果沒有給 deal_id，嘗試從持倉自動找
         if not deal_id:
             positions = self.get_positions()
+            target = None
             for pos in positions:
-                if pos["market"]["epic"] == epic and pos["position"]["direction"].upper() == direction.upper():
-                    deal_id = pos["position"]["dealId"]
-                    size = pos["position"]["size"]
+                if pos["market"]["epic"] == epic:
+                    target = pos
                     break
-            else:
-                return {"error": "找不到對應持倉", "status_code": 404}
+            if not target:
+                return {"error": f"找不到 {epic} 的持倉", "status_code": 404}
+            deal_id = target["position"]["dealId"]
+            size = target["position"]["size"]
+            current_dir = target["position"]["direction"].upper()
+        else:
+            # 如果使用者有提供 deal_id，也查詢方向
+            positions = self.get_positions()
+            target = next((p for p in positions if p["position"]["dealId"] == deal_id), None)
+            if not target:
+                return {"error": f"找不到 dealId={deal_id} 的持倉", "status_code": 404}
+            current_dir = target["position"]["direction"].upper()
+            if not size:
+                size = target["position"]["size"]
 
-        # 平倉要送反向方向
-        opposite = "SELL" if direction.upper() == "BUY" else "BUY"
+        # 自動算反向方向
+        opposite = "SELL" if current_dir == "BUY" else "BUY"
 
         url = self.base_url + "/positions/otc"
         payload = {
             "dealId": deal_id,
             "epic": epic,
             "size": size,
-            "direction": opposite,       # 反向方向
+            "direction": opposite,
             "orderType": "MARKET",
             "currencyCode": "USD",
             "forceOpen": False,
@@ -125,18 +137,18 @@ def api_webhook():
     data = request.json or {}
     mode = data.get("mode")
     epic = data.get("epic")
-    direction = data.get("direction")
-    size = data.get("size", 1)
+    size = data.get("size", None)
     deal_id = data.get("dealId")
 
     if mode == "order":
+        direction = data.get("direction")
         if not epic or not direction:
             return jsonify({"error": "epic and direction are required for order"}), 400
-        result = trader.place_order(epic, direction, size)
+        result = trader.place_order(epic, direction, size or 1)
     elif mode == "close":
-        if not epic or not direction:
-            return jsonify({"error": "epic and direction are required for close"}), 400
-        result = trader.close_position(deal_id, epic, size, direction)
+        if not epic and not deal_id:
+            return jsonify({"error": "epic 或 dealId 至少要有一個"}), 400
+        result = trader.close_position(deal_id, epic, size)
     elif mode == "positions":
         try:
             result = trader.get_positions()
