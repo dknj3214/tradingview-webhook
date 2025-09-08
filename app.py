@@ -44,7 +44,7 @@ class IGTrader:
         self.account_id = resp.json()["accounts"][0]["accountId"]
         print("Login success, Account ID:", self.account_id)
 
-    def get_positions(self):    
+    def get_positions(self):
         url = self.base_url + "/positions"
         headers = self.headers.copy()
         headers["Version"] = "1"
@@ -70,7 +70,7 @@ class IGTrader:
         headers = self.headers.copy()
         headers["Version"] = "2"
         resp = self.session.post(url, json=payload, headers=headers)
-        if resp.status_code not in [200,201]:
+        if resp.status_code not in [200, 201]:
             return {"error": resp.text, "status_code": resp.status_code}
         return resp.json()
 
@@ -86,12 +86,15 @@ class IGTrader:
             else:
                 return {"error": "找不到對應持倉", "status_code": 404}
 
+        # 平倉要送反向方向
+        opposite = "SELL" if direction.upper() == "BUY" else "BUY"
+
         url = self.base_url + "/positions/otc"
         payload = {
             "dealId": deal_id,
             "epic": epic,
             "size": size,
-            "direction": direction.upper(),
+            "direction": opposite,       # 反向方向
             "orderType": "MARKET",
             "currencyCode": "USD",
             "forceOpen": False,
@@ -102,7 +105,7 @@ class IGTrader:
         headers = self.headers.copy()
         headers["Version"] = "2"
         resp = self.session.post(url, json=payload, headers=headers)
-        if resp.status_code not in [200,201]:
+        if resp.status_code not in [200, 201]:
             return {"error": resp.text, "status_code": resp.status_code}
         return resp.json()
 
