@@ -51,7 +51,7 @@ class IGTrader:
     def get_positions(self):
         url = self.base_url + "/positions"
         headers = self.headers.copy()
-        headers["Version"] = "1"
+        headers["Version"] = "2"
         resp = self.session.get(url, headers=headers)
         if resp.status_code != 200:
             raise Exception(f"查詢持倉失敗：{resp.status_code} {resp.text}")
@@ -60,7 +60,7 @@ class IGTrader:
     def get_account_info(self):
         url = self.base_url + f"/accounts/{self.account_id}"
         headers = self.headers.copy()
-        headers["Version"] = "1"
+        headers["Version"] = "2"
         resp = self.session.get(url, headers=headers)
         if resp.status_code != 200:
             raise Exception(f"查詢帳戶資訊失敗：{resp.status_code} {resp.text}")
