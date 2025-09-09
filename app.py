@@ -42,23 +42,19 @@ class IGTrader:
         payload = {"identifier": self.username, "password": self.password}
         resp = self.session.post(url, json=payload, headers=self.headers)
         
-        # 檢查登入回應是否成功
         if resp.status_code != 200:
             raise Exception(f"登入失敗：{resp.status_code} {resp.text}")
         
-        # 打印完整的登入回應
         print("登入回應資料:", resp.json())
         
-        # 確認是否有帳戶資料並提取帳戶 ID 和帳戶資訊
         accounts = resp.json().get("accounts", [])
         if accounts:
             self.account_id = accounts[0]["accountId"]
             self.account_info = resp.json().get("accountInfo")  # 直接取得帳戶資訊
-            print("帳戶 ID:", self.account_id)  # 打印帳戶 ID
+            print("帳戶 ID:", self.account_id)
         else:
             raise Exception("無法找到帳戶資料，登入成功但沒有帳戶信息")
         
-        # 設置標頭以後續使用
         self.headers["X-SECURITY-TOKEN"] = resp.headers["X-SECURITY-TOKEN"]
         self.headers["CST"] = resp.headers["CST"]
         print("登入成功，帳戶 ID 設置為:", self.account_id)
@@ -73,38 +69,20 @@ class IGTrader:
         return resp.json().get("positions", [])
 
     def get_account_info(self):
-        # 直接返回登入時獲取的帳戶資訊
         return self.account_info
 
-    def get_market_price(self, epic, direction):
-        url = f"{self.base_url}/markets/{epic}"
-        headers = self.headers.copy()
-        headers["Version"] = "1"
-        resp = self.session.get(url, headers=headers)
-        
-        if resp.status_code != 200:
-            raise Exception(f"無法取得市場價格 {epic}: {resp.text}")
-        
-        # 打印出回應內容以檢查結構
-        print("API 回應:", resp.json())
-    
-        # 檢查回應中是否包含 market 和 snapshot
-        if "market" in resp.json() and "snapshot" in resp.json()["market"]:
-            market_data = resp.json()["market"]["snapshot"]
-            return market_data["bid"] if direction.upper() == "SELL" else market_data["offer"]
-        else:
-            raise Exception(f"回應格式錯誤，缺少 'market' 或 'snapshot' 欄位: {resp.json()}")
-
-    def calculate_size(self, epic, direction, stop_loss):
+    def calculate_size(self, entry, stop_loss):
         # 直接從帳戶資訊中取得餘額
         account_info = self.get_account_info()
         equity = float(account_info.get("available") or account_info.get("balance") or 10000)
         risk_amount = equity * 0.01  # 每單風險 1%
 
-        market_price = self.get_market_price(epic, direction)
-        pip_value = abs(market_price - float(stop_loss))
+        # 計算止損空間 (進場價格與止損價格的差異)
+        pip_value = abs(float(entry) - float(stop_loss))
         if pip_value == 0:
-            pip_value = 1
+            pip_value = 1  # 防止除以 0，這只是保險措施
+
+        # 根據風險金額和止損空間計算倉位大小
         size = risk_amount / pip_value
         return size
 
@@ -207,7 +185,7 @@ def api_webhook():
         if mode == "order":
             if not epic or not direction or not entry or not stop_loss:
                 return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
-            size = trader.calculate_size(epic, direction, stop_loss)
+            size = trader.calculate_size(entry, stop_loss)
             result = trader.place_order(epic, direction, size)
 
         elif mode == "close":
