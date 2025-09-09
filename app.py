@@ -60,7 +60,7 @@ class IGTrader:
     def get_account_info(self):
         url = self.base_url + f"/accounts/{self.account_id}"
         headers = self.headers.copy()
-        headers["Version"] = "2"
+        headers["Version"] = "1"
         resp = self.session.get(url, headers=headers)
         if resp.status_code != 200:
             raise Exception(f"查詢帳戶資訊失敗：{resp.status_code} {resp.text}")
@@ -69,7 +69,7 @@ class IGTrader:
     def get_market_price(self, epic, direction):
         url = f"{self.base_url}/markets/{epic}"
         headers = self.headers.copy()
-        headers["Version"] = "2"
+        headers["Version"] = "1"
         resp = self.session.get(url, headers=headers)
         if resp.status_code != 200:
             raise Exception(f"無法取得市場價格 {epic}: {resp.text}")
