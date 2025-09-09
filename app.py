@@ -157,6 +157,20 @@ trader = IGTrader(
     account_type=os.environ.get("IG_ACCOUNT_TYPE", "DEMO"),
 )
 
+# ===========================
+# 新增帳戶資訊路由
+# ===========================
+@app.route("/get_account_info", methods=["GET"])
+def api_get_account_info():
+    try:
+        account_info = trader.get_account_info()  # 呼叫 IGTrader 的 get_account_info 方法
+        return jsonify(account_info)  # 返回帳戶資訊作為 JSON
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ===========================
+# Webhook 路由
+# ===========================
 @app.route("/webhook", methods=["POST"])
 def api_webhook():
     try:
