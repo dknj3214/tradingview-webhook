@@ -79,6 +79,7 @@ class IGTrader:
         return market_data["bid"] if direction.upper() == "SELL" else market_data["offer"]
 
     def calculate_size(self, epic, direction, stop_loss):
+        # 直接從帳戶資訊中取得餘額
         account_info = self.get_account_info()
         equity = float(account_info.get("available") or account_info.get("balance") or 10000)
         risk_amount = equity * 0.01  # 每單風險 1%
