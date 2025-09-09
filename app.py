@@ -84,6 +84,7 @@ class IGTrader:
 
         # 根據風險金額和止損空間計算倉位大小
         size = risk_amount / pip_value
+        size = round(size, 2)
         return size
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
