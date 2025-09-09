@@ -49,10 +49,11 @@ class IGTrader:
         # 打印完整的登入回應
         print("登入回應資料:", resp.json())
         
-        # 確認是否有帳戶資料並提取帳戶 ID
+        # 確認是否有帳戶資料並提取帳戶 ID 和帳戶資訊
         accounts = resp.json().get("accounts", [])
         if accounts:
             self.account_id = accounts[0]["accountId"]
+            self.account_info = resp.json().get("accountInfo")  # 直接取得帳戶資訊
             print("帳戶 ID:", self.account_id)  # 打印帳戶 ID
         else:
             raise Exception("無法找到帳戶資料，登入成功但沒有帳戶信息")
@@ -72,15 +73,8 @@ class IGTrader:
         return resp.json().get("positions", [])
 
     def get_account_info(self):
-        url = self.base_url + f"/accounts/{self.account_id}"
-        headers = self.headers.copy()
-        headers["Version"] = "2"  # 改成 Version 2
-        resp = self.session.get(url, headers=headers)
-        if resp.status_code != 200:
-            raise Exception(f"查詢帳戶資訊失敗：{resp.status_code} {resp.text}")
-        data = resp.json()
-        account_data = data.get("account") or data.get("accounts")[0]
-        return account_data
+        # 直接返回登入時獲取的帳戶資訊
+        return self.account_info
 
     def get_market_price(self, epic, direction):
         url = f"{self.base_url}/markets/{epic}"
