@@ -41,12 +41,26 @@ class IGTrader:
         url = self.base_url + "/session"
         payload = {"identifier": self.username, "password": self.password}
         resp = self.session.post(url, json=payload, headers=self.headers)
+        
+        # 檢查登入回應是否成功
         if resp.status_code != 200:
             raise Exception(f"登入失敗：{resp.status_code} {resp.text}")
+        
+        # 打印完整的登入回應
+        print("登入回應資料:", resp.json())
+        
+        # 確認是否有帳戶資料並提取帳戶 ID
+        accounts = resp.json().get("accounts", [])
+        if accounts:
+            self.account_id = accounts[0]["accountId"]
+            print("帳戶 ID:", self.account_id)  # 打印帳戶 ID
+        else:
+            raise Exception("無法找到帳戶資料，登入成功但沒有帳戶信息")
+        
+        # 設置標頭以後續使用
         self.headers["X-SECURITY-TOKEN"] = resp.headers["X-SECURITY-TOKEN"]
         self.headers["CST"] = resp.headers["CST"]
-        self.account_id = resp.json()["accounts"][0]["accountId"]
-        print("Login success, Account ID:", self.account_id)
+        print("登入成功，帳戶 ID 設置為:", self.account_id)
 
     def get_positions(self):
         url = self.base_url + "/positions"
