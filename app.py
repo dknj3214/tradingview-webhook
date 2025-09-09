@@ -169,11 +169,12 @@ def api_webhook():
         mode = data.get("mode")
         epic = data.get("epic")
         direction = data.get("direction")
+        entry = data.get("entry")
         stop_loss = data.get("stop_loss")
 
         if mode == "order":
-            if not epic or not direction or not stop_loss:
-                return jsonify({"error": "epic, direction, stop_loss 都要提供"}), 400
+            if not epic or not direction or not entry or not stop_loss:
+                return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
             size = trader.calculate_size(epic, direction, stop_loss)
             result = trader.place_order(epic, direction, size)
 
