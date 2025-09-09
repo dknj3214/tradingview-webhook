@@ -66,6 +66,28 @@ class IGTrader:
             raise Exception(f"查詢帳戶資訊失敗：{resp.status_code} {resp.text}")
         return resp.json()
 
+    def get_market_price(self, epic, direction):
+        url = f"{self.base_url}/markets/{epic}"
+        headers = self.headers.copy()
+        headers["Version"] = "2"
+        resp = self.session.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise Exception(f"無法取得市場價格 {epic}: {resp.text}")
+        market_data = resp.json()["market"]["snapshot"]
+        return market_data["bid"] if direction.upper() == "SELL" else market_data["offer"]
+
+    def calculate_size(self, epic, direction, stop_loss):
+        account_info = self.get_account_info()
+        equity = account_info.get("balance") or account_info.get("available") or 10000
+        risk_amount = equity * 0.01  # 每單風險 1%
+
+        market_price = self.get_market_price(epic, direction)
+        pip_value = abs(market_price - float(stop_loss))
+        if pip_value == 0:
+            pip_value = 1
+        size = risk_amount / pip_value
+        return size
+
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
         url = self.base_url + "/positions/otc"
         payload = {
@@ -88,9 +110,6 @@ class IGTrader:
         return resp.json()
 
     def close_position(self, epic=None):
-        """
-        自動查詢該 epic 的持倉，並全部平倉
-        """
         positions = self.get_positions()
         targets = [p for p in positions if p["market"]["epic"] == epic]
         if not targets:
@@ -147,22 +166,19 @@ def api_webhook():
 
         mode = data.get("mode")
         epic = data.get("epic")
-        deal_id = data.get("dealId")
-        size = float(data.get("size", 1))
         direction = data.get("direction")
+        stop_loss = data.get("stop_loss")
 
         if mode == "order":
-            if not epic or not direction:
-                return jsonify({"error": "epic 和 direction 都要提供"}), 400
+            if not epic or not direction or not stop_loss:
+                return jsonify({"error": "epic, direction, stop_loss 都要提供"}), 400
+            size = trader.calculate_size(epic, direction, stop_loss)
             result = trader.place_order(epic, direction, size)
 
         elif mode == "close":
             if not epic:
                 return jsonify({"error": "close 時必須提供 epic"}), 400
             result = trader.close_position(epic=epic)
-
-        elif mode == "positions":
-            result = trader.get_positions()
 
         else:
             return jsonify({"error": f"未知的 mode: {mode}"}), 400
