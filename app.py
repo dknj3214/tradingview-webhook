@@ -81,10 +81,19 @@ class IGTrader:
         headers = self.headers.copy()
         headers["Version"] = "1"
         resp = self.session.get(url, headers=headers)
+        
         if resp.status_code != 200:
             raise Exception(f"無法取得市場價格 {epic}: {resp.text}")
-        market_data = resp.json()["market"]["snapshot"]
-        return market_data["bid"] if direction.upper() == "SELL" else market_data["offer"]
+        
+        # 打印出回應內容以檢查結構
+        print("API 回應:", resp.json())
+    
+        # 檢查回應中是否包含 market 和 snapshot
+        if "market" in resp.json() and "snapshot" in resp.json()["market"]:
+            market_data = resp.json()["market"]["snapshot"]
+            return market_data["bid"] if direction.upper() == "SELL" else market_data["offer"]
+        else:
+            raise Exception(f"回應格式錯誤，缺少 'market' 或 'snapshot' 欄位: {resp.json()}")
 
     def calculate_size(self, epic, direction, stop_loss):
         # 直接從帳戶資訊中取得餘額
