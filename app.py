@@ -60,11 +60,13 @@ class IGTrader:
     def get_account_info(self):
         url = self.base_url + f"/accounts/{self.account_id}"
         headers = self.headers.copy()
-        headers["Version"] = "1"
+        headers["Version"] = "2"  # 改成 Version 2
         resp = self.session.get(url, headers=headers)
         if resp.status_code != 200:
             raise Exception(f"查詢帳戶資訊失敗：{resp.status_code} {resp.text}")
-        return resp.json()
+        data = resp.json()
+        account_data = data.get("account") or data.get("accounts")[0]
+        return account_data
 
     def get_market_price(self, epic, direction):
         url = f"{self.base_url}/markets/{epic}"
@@ -78,7 +80,7 @@ class IGTrader:
 
     def calculate_size(self, epic, direction, stop_loss):
         account_info = self.get_account_info()
-        equity = account_info.get("balance") or account_info.get("available") or 10000
+        equity = float(account_info.get("available") or account_info.get("balance") or 10000)
         risk_amount = equity * 0.01  # 每單風險 1%
 
         market_price = self.get_market_price(epic, direction)
