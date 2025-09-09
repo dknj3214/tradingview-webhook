@@ -138,30 +138,33 @@ trader = IGTrader(
 @app.route("/webhook", methods=["POST"])
 def api_webhook():
     try:
-        data = request.get_json(force=True)
-        print("收到 Webhook:", data)
+        # 讀取 TradingView 傳來的原始字串
+        raw = request.data.decode("utf-8")
+        print("收到 Webhook raw:", raw)
+
+        # 轉成 dict
+        data = dict(item.split("=") for item in raw.split("&") if "=" in item)
+        print("解析後:", data)
 
         mode = data.get("mode")
         epic = data.get("epic")
-        size = data.get("size")
+        size = float(data.get("size", 1))
         deal_id = data.get("dealId")
 
         if mode == "order":
             direction = data.get("direction")
             if not epic or not direction:
                 return jsonify({"error": "epic 和 direction 都要提供"}), 400
-            result = trader.place_order(epic, direction, size or 1)
+            result = trader.place_order(epic, direction, size)
 
         elif mode == "close":
-            if not epic and not deal_id:
-                return jsonify({"error": "epic 或 dealId 至少要有一個"}), 400
             result = trader.close_position(deal_id=deal_id, epic=epic, size=size)
 
         elif mode == "positions":
             result = trader.get_positions()
 
         else:
-            return jsonify({"error": "未知的 mode"}), 400
+            return jsonify({"error": f"未知的 mode: {mode}"}), 400
 
         return jsonify(result)
 
