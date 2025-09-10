@@ -78,35 +78,38 @@ class IGTrader:
     def calculate_size(self, entry, stop_loss):
         entry = float(entry)
         stop_loss = float(stop_loss)
-
+    
         # === 固定參數 ===
         leverage = 200
         pip_value_per_lot = 10
-        risk_percent = 0.01
-
+        risk_percent = 0.01  # 假設風險設定為1%
+    
         # 固定保證金率 0.5%
-        margin_factor = 0.5
-
+        margin_factor = 0.5 / 100  # 將百分比轉為小數
+    
         equity = float(self.account_info.get("balance", 10000))
         risk_amount = equity * risk_percent
-        pip_count = abs(entry - stop_loss) * 10000
+    
+        # 計算止損的點數
+        pip_count = abs(entry - stop_loss) * 10000  # 假設是 4 位小數
         pip_count = pip_count if pip_count != 0 else 1
-
+    
         # === 初步倉位計算 ===
         size = (risk_amount * leverage) / (pip_count * pip_value_per_lot)
-
-        # === 預估保證金需求 ===
-        required_margin = size * entry * (margin_factor / 100)
-        max_margin = self.available_funds * 0.5
-
-        print(f"[計算] size: {size:.2f}, margin_factor: {margin_factor}%, required_margin: {required_margin:.2f}, max_margin: {max_margin:.2f}")
-
+    
+        # === 保證金計算 ===
+        required_margin = size * entry * margin_factor  # 根據 size 和 entry 計算保證金需求
+        max_margin = self.available_funds * 0.5  # 假設最大保證金使用 50% 可用保證金
+    
+        print(f"[計算] size: {size:.2f}, margin_factor: {margin_factor*100}%, required_margin: {required_margin:.2f}, max_margin: {max_margin:.2f}")
+    
         # === 如超過 50% 可用保證金則調整倉位 ===
         if required_margin > max_margin and max_margin > 0:
-            size = max_margin / (entry * (margin_factor / 100))
+            size = max_margin / (entry * margin_factor)
             print(f"[調整] 超過可用保證金上限，調整 size: {size:.2f}")
-
+    
         return round(size, 2)
+
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
         url = self.base_url + "/positions/otc"
