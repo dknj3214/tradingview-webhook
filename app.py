@@ -72,25 +72,34 @@ class IGTrader:
         return self.account_info
 
     def calculate_size(self, entry, stop_loss):
+        # === 帳戶資訊 ===
         account_info = self.get_account_info()
         equity = float(account_info.get("available") or account_info.get("balance") or 10000)
-        risk_amount = equity * 0.01  # 每單風險 1%
-    
-        # 假設這兩個貨幣對的每手 pip 價值固定為 10 USD
-        pip_value_per_lot = 10  # 適用 EUR/USD 與 GBP/USD
-    
-        # 計算止損點數（以 pip 為單位）
+
+        # === 固定風險參數 ===
+        risk_percent = 0.01  # 每筆交易風險 1%
+        risk_amount = equity * risk_percent  # 風險金額
+
+        # === 市場參數 ===
+        pip_value_per_lot = 10  # 每 lot 每 pip 損益 10 美元（對 EUR/USD, GBP/USD 為固定值）
         pip_diff = abs(float(entry) - float(stop_loss))
-        pip_count = pip_diff * 10000  # 因為 EUR/USD、GBP/USD 是 0.0001 為 1 pip
-    
+        pip_count = pip_diff * 10000  # 點差轉換為 pip 數（EUR/USD 精度為 0.0001）
+
         if pip_count == 0:
-            pip_count = 1  # 避免除以 0
-    
-        # 倉位大小（手）＝ 風險金額 ÷ (止損點數 × 每 pip 價值)
-        size = risk_amount / (pip_count * (pip_value_per_lot / 1))  # 1 lot = pip_value_per_lot 美元
-        size = round(size, 2)
-    
+            pip_count = 1  # 防止除以零錯誤
+
+        # === 槓桿假設 ===
+        leverage = 200  # 寫死為 200 倍槓桿
+
+        # === 倉位大小計算 ===
+        # 說明：風險金額 = 倉位大小 * pip 數 * 每 pip 價值 / 槓桿
+        # 所以：倉位大小 = 風險金額 * 槓桿 ÷ (pip 數 × pip 價值)
+        size = (risk_amount * leverage) / (pip_count * pip_value_per_lot)
+        size = round(size, 2)  # 保留兩位小數
+
+        print(f"[倉位計算] Equity: {equity}, Risk: {risk_amount}, Pip: {pip_count}, Size: {size}")
         return size
+
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
         url = self.base_url + "/positions/otc"
