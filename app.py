@@ -83,7 +83,7 @@ class IGTrader:
         risk_percent = 0.01
         margin_rate = 0.005  # 0.5%
 
-        equity = float(self.account_info.get("balance", 10000))
+        equity = float(self.account_info.get("balance", 0))
         available_margin = self.available_funds
         risk_amount = equity * risk_percent
 
