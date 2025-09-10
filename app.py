@@ -72,19 +72,24 @@ class IGTrader:
         return self.account_info
 
     def calculate_size(self, entry, stop_loss):
-        # 直接從帳戶資訊中取得餘額
         account_info = self.get_account_info()
         equity = float(account_info.get("available") or account_info.get("balance") or 10000)
         risk_amount = equity * 0.01  # 每單風險 1%
-
-        # 計算止損空間 (進場價格與止損價格的差異)
-        pip_value = abs(float(entry) - float(stop_loss))
-        if pip_value == 0:
-            pip_value = 1  # 防止除以 0，這只是保險措施
-
-        # 根據風險金額和止損空間計算倉位大小
-        size = risk_amount / pip_value
+    
+        # 假設這兩個貨幣對的每手 pip 價值固定為 10 USD
+        pip_value_per_lot = 10  # 適用 EUR/USD 與 GBP/USD
+    
+        # 計算止損點數（以 pip 為單位）
+        pip_diff = abs(float(entry) - float(stop_loss))
+        pip_count = pip_diff * 10000  # 因為 EUR/USD、GBP/USD 是 0.0001 為 1 pip
+    
+        if pip_count == 0:
+            pip_count = 1  # 避免除以 0
+    
+        # 倉位大小（手）＝ 風險金額 ÷ (止損點數 × 每 pip 價值)
+        size = risk_amount / (pip_count * (pip_value_per_lot / 1))  # 1 lot = pip_value_per_lot 美元
         size = round(size, 2)
+    
         return size
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
