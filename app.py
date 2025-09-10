@@ -50,7 +50,7 @@ class IGTrader:
         accounts = resp.json().get("accounts", [])
         if accounts:
             self.account_id = accounts[0]["accountId"]
-            self.account_info = resp.json().get("accountInfo")  # 直接取得帳戶資訊
+            self.account_info = resp.json().get("accountInfo")  # 包含 balance / available 等資訊
             print("帳戶 ID:", self.account_id)
         else:
             raise Exception("無法找到帳戶資料，登入成功但沒有帳戶信息")
@@ -59,16 +59,9 @@ class IGTrader:
         self.headers["CST"] = resp.headers["CST"]
         print("登入成功，帳戶 ID 設置為:", self.account_id)
 
-        # 額外新增: 取得可用保證金 (available margin)
-        margin_url = f"{self.base_url}/accounts/{self.account_id}/margin"
-        margin_resp = self.session.get(margin_url, headers=self.headers)
-        if margin_resp.status_code == 200:
-            margin_data = margin_resp.json()
-            self.available_margin = float(margin_data.get("available", 0))
-            print(f"可用保證金: {self.available_margin}")
-        else:
-            print(f"無法取得可用保證金，回傳狀態碼：{margin_resp.status_code}")
-            self.available_margin = 0
+        # === 儲存可用保證金 ===
+        self.available_funds = float(self.account_info.get("available", 0))
+        print(f"[登入] 可用保證金 available_funds: {self.available_funds}")
 
     def get_positions(self):
         url = self.base_url + "/positions"
@@ -85,44 +78,32 @@ class IGTrader:
     def calculate_size(self, entry, stop_loss):
         entry = float(entry)
         stop_loss = float(stop_loss)
-        # === 帳戶資訊 ===
-        account_info = self.get_account_info()
-        equity = float(account_info.get("available") or account_info.get("balance") or 10000)
-    
-        # === 固定風險參數 ===
-        risk_percent = 0.01  # 每筆交易風險 1%
-        risk_amount = equity * risk_percent  # 風險金額
-    
-        # === 市場參數 ===
-        pip_value_per_lot = 10  # 每 lot 每 pip 損益 10 美元（對 EUR/USD, GBP/USD 為固定值）
-        pip_diff = abs(entry - stop_loss)
-        pip_count = pip_diff * 10000  # 點差轉換為 pip 數（EUR/USD 精度為 0.0001）
-    
-        if pip_count == 0:
-            pip_count = 1  # 防止除以零錯誤
-    
-        # === 槓桿假設 ===
-        leverage = 200  # 寫死為 200 倍槓桿
-    
-        # === 初步計算倉位大小 ===
-        size = (risk_amount * leverage) / (pip_count * pip_value_per_lot)
-    
-        # === 計算此倉位所需保證金 ===
-        required_margin = (size * entry) / leverage  # 估算保證金 = (倉位 * 價格) / 槓桿
-    
-        print(f"[計算] 初步倉位大小: {size:.2f}, 所需保證金: {required_margin:.2f}, 可用保證金: {self.available_margin:.2f}")
-    
-        # === 如果所需保證金超過可用保證金一半，改用可用保證金一半最大倉位 ===
-        max_allowed_margin = self.available_margin * 0.5
-    
-        if required_margin > max_allowed_margin and max_allowed_margin > 0:
-            size = (max_allowed_margin * leverage) / entry
-            size = round(size, 2)
-            print(f"[調整] 保證金限制，改用最大允許倉位: {size}")
-    
-        size = round(size, 2)
-        return size
 
+        # === 固定參數 ===
+        leverage = 200
+        pip_value_per_lot = 10
+        risk_percent = 0.01
+
+        equity = float(self.account_info.get("balance", 10000))
+        risk_amount = equity * risk_percent
+        pip_count = abs(entry - stop_loss) * 10000
+        pip_count = pip_count if pip_count != 0 else 1
+
+        # === 初步倉位計算 ===
+        size = (risk_amount * leverage) / (pip_count * pip_value_per_lot)
+
+        # === 預估保證金需求 ===
+        required_margin = (size * entry) / leverage
+        max_margin = self.available_funds * 0.5
+
+        print(f"[計算] 初步 size: {size:.2f}, 預估保證金: {required_margin:.2f}, 限制上限: {max_margin:.2f}")
+
+        # === 如超過 50% 可用保證金則調整倉位 ===
+        if required_margin > max_margin and max_margin > 0:
+            size = (max_margin * leverage) / entry
+            print(f"[調整] 超出保證金限制，改為最大允許倉位 size: {size:.2f}")
+
+        return round(size, 2)
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
         url = self.base_url + "/positions/otc"
@@ -140,6 +121,7 @@ class IGTrader:
         }
         headers = self.headers.copy()
         headers["Version"] = "2"
+        print(f"[下單] payload: {payload}")
         resp = self.session.post(url, json=payload, headers=headers)
         if resp.status_code not in [200, 201]:
             return {"error": resp.text, "status_code": resp.status_code}
@@ -191,20 +173,13 @@ trader = IGTrader(
     account_type=os.environ.get("IG_ACCOUNT_TYPE", "DEMO"),
 )
 
-# ===========================
-# 新增帳戶資訊路由
-# ===========================
 @app.route("/get_account_info", methods=["GET"])
 def api_get_account_info():
     try:
-        account_info = trader.get_account_info()  # 呼叫 IGTrader 的 get_account_info 方法
-        return jsonify(account_info)  # 返回帳戶資訊作為 JSON
+        return jsonify(trader.get_account_info())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ===========================
-# Webhook 路由
-# ===========================
 @app.route("/webhook", methods=["POST"])
 def api_webhook():
     try:
