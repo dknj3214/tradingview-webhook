@@ -84,6 +84,9 @@ class IGTrader:
         pip_value_per_lot = 10
         risk_percent = 0.01
 
+        # 固定保證金率 0.5%
+        margin_factor = 0.5
+
         equity = float(self.account_info.get("balance", 10000))
         risk_amount = equity * risk_percent
         pip_count = abs(entry - stop_loss) * 10000
@@ -93,15 +96,15 @@ class IGTrader:
         size = (risk_amount * leverage) / (pip_count * pip_value_per_lot)
 
         # === 預估保證金需求 ===
-        required_margin = (size * entry) / leverage
+        required_margin = size * entry * (margin_factor / 100)
         max_margin = self.available_funds * 0.5
 
-        print(f"[計算] 初步 size: {size:.2f}, 預估保證金: {required_margin:.2f}, 限制上限: {max_margin:.2f}")
+        print(f"[計算] size: {size:.2f}, margin_factor: {margin_factor}%, required_margin: {required_margin:.2f}, max_margin: {max_margin:.2f}")
 
         # === 如超過 50% 可用保證金則調整倉位 ===
         if required_margin > max_margin and max_margin > 0:
-            size = (max_margin * leverage) / entry
-            print(f"[調整] 超出保證金限制，改為最大允許倉位 size: {size:.2f}")
+            size = max_margin / (entry * (margin_factor / 100))
+            print(f"[調整] 超過可用保證金上限，調整 size: {size:.2f}")
 
         return round(size, 2)
 
@@ -200,7 +203,7 @@ def api_webhook():
                 return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
             size = trader.calculate_size(entry, stop_loss)
             result = trader.place_order(epic, direction, size)
-
+            
         elif mode == "close":
             if not epic:
                 return jsonify({"error": "close 時必須提供 epic"}), 400
