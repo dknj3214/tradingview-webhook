@@ -41,12 +41,12 @@ class IGTrader:
         url = self.base_url + "/session"
         payload = {"identifier": self.username, "password": self.password}
         resp = self.session.post(url, json=payload, headers=self.headers)
-        
+
         if resp.status_code != 200:
             raise Exception(f"登入失敗：{resp.status_code} {resp.text}")
-        
+
         print("登入回應資料:", resp.json())
-        
+
         accounts = resp.json().get("accounts", [])
         if accounts:
             self.account_id = accounts[0]["accountId"]
@@ -54,10 +54,21 @@ class IGTrader:
             print("帳戶 ID:", self.account_id)
         else:
             raise Exception("無法找到帳戶資料，登入成功但沒有帳戶信息")
-        
+
         self.headers["X-SECURITY-TOKEN"] = resp.headers["X-SECURITY-TOKEN"]
         self.headers["CST"] = resp.headers["CST"]
         print("登入成功，帳戶 ID 設置為:", self.account_id)
+
+        # 額外新增: 取得可用保證金 (available margin)
+        margin_url = f"{self.base_url}/accounts/{self.account_id}/margin"
+        margin_resp = self.session.get(margin_url, headers=self.headers)
+        if margin_resp.status_code == 200:
+            margin_data = margin_resp.json()
+            self.available_margin = float(margin_data.get("available", 0))
+            print(f"可用保證金: {self.available_margin}")
+        else:
+            print(f"無法取得可用保證金，回傳狀態碼：{margin_resp.status_code}")
+            self.available_margin = 0
 
     def get_positions(self):
         url = self.base_url + "/positions"
@@ -91,15 +102,24 @@ class IGTrader:
         # === 槓桿假設 ===
         leverage = 200  # 寫死為 200 倍槓桿
 
-        # === 倉位大小計算 ===
-        # 說明：風險金額 = 倉位大小 * pip 數 * 每 pip 價值 / 槓桿
-        # 所以：倉位大小 = 風險金額 * 槓桿 ÷ (pip 數 × pip 價值)
+        # === 初步計算倉位大小 ===
         size = (risk_amount * leverage) / (pip_count * pip_value_per_lot)
-        size = round(size, 2)  # 保留兩位小數
 
-        print(f"[倉位計算] Equity: {equity}, Risk: {risk_amount}, Pip: {pip_count}, Size: {size}")
+        # === 計算此倉位所需保證金 ===
+        required_margin = (size * entry) / leverage  # 估算保證金 = (倉位 * 價格) / 槓桿
+
+        print(f"[計算] 初步倉位大小: {size:.2f}, 所需保證金: {required_margin:.2f}, 可用保證金: {self.available_margin:.2f}")
+
+        # === 如果所需保證金超過可用保證金一半，改用可用保證金一半最大倉位 ===
+        max_allowed_margin = self.available_margin * 0.5
+
+        if required_margin > max_allowed_margin and max_allowed_margin > 0:
+            size = (max_allowed_margin * leverage) / entry
+            size = round(size, 2)
+            print(f"[調整] 保證金限制，改用最大允許倉位: {size}")
+
+        size = round(size, 2)
         return size
-
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
         url = self.base_url + "/positions/otc"
