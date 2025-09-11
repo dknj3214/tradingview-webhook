@@ -59,7 +59,7 @@ class IGTrader:
         self.headers["CST"] = resp.headers["CST"]
         print("登入成功，帳戶 ID:", self.account_id)
 
-        self.available_funds = float(self.account_info.get("available", 0))
+        equity = float(self.account_info.get("balance", {}).get("available", 0))
         print(f"[登入] 可用保證金 available_funds: {self.available_funds}")
 
     def get_positions(self):
