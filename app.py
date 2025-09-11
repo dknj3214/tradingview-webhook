@@ -75,30 +75,42 @@ class IGTrader:
         return self.account_info
 
     def calculate_size(self, entry, stop_loss):
-        entry = float(entry)
-        stop_loss = float(stop_loss)
+        try:
+            # === 價格轉換與防錯 ===
+            entry = float(entry)
+            stop_loss = float(stop_loss)
+    
+            if entry == stop_loss:
+                raise ValueError("Entry price and stop loss cannot be the same.")
+    
+            # === 固定參數（可依需求自行調整） ===
+            pip_factor = 10000                   # EUR/GBP 每 pip = 0.0001
+            pip_value_per_standard_lot = 10      # 每標準手每 pip 價值（以 USD 計）
+            risk_percent = 0.01                  # 每筆交易風險佔本金比例（1%）
+    
+            # === 帳戶資訊 ===
+            equity = float(self.account_info.get("balance", 0))
+            risk_amount = equity * risk_percent
+    
+            # === 計算止損距離（pips） ===
+            pip_distance = abs(entry - stop_loss) * pip_factor
+            pip_distance = max(pip_distance, 1)  # 防止除以 0
+    
+            # === 根據風險金額計算倉位大小（單位：標準手） ===
+            position_size = risk_amount / (pip_distance * pip_value_per_standard_lot)
+    
+            # === 輸出結果 ===
+            print("[倉位計算 - 風控法]")
+            print(f"  ▶ 本金             : ${equity:.2f}")
+            print(f"  ▶ 可承受風險金額   : ${risk_amount:.2f}")
+            print(f"  ▶ 止損距離（pips）: {pip_distance:.1f}")
+            print(f"  ▶ ✅ 建議倉位大小   : {position_size:.2f} 手")
+    
+            return round(position_size, 2)
 
-        # === 固定參數 ===
-        pip_value_per_lot = 10
-        risk_percent = 0.01
-        margin_rate = 0.005  # 0.5%
-
-        equity = float(self.account_info.get("balance", 0))
-        available_margin = self.available_funds
-        risk_amount = equity * risk_percent
-
-        pip_count = abs(entry - stop_loss) * 10000
-        pip_count = pip_count if pip_count != 0 else 1
-
-        size_by_risk = risk_amount / (pip_count * pip_value_per_lot)
-        size_by_margin = available_margin / (entry * margin_rate)
-
-        final_size = min(size_by_risk, size_by_margin)
-
-        print(f"[倉位計算] risk_amount: {risk_amount:.2f}, pip_count: {pip_count},")
-        print(f"size_by_risk: {size_by_risk:.2f}, size_by_margin: {size_by_margin:.2f}, 最終 size: {final_size:.2f}")
-
-        return round(final_size, 2)
+        except Exception as e:
+            print(f"[錯誤] 倉位計算失敗: {str(e)}")
+            return 0.0
 
     def place_order(self, epic, direction, size=1, order_type="MARKET"):
         url = self.base_url + "/positions/otc"
