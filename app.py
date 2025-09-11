@@ -113,7 +113,7 @@ class IGTrader:
             pip_factor = 10000
             pip_value_per_standard_lot = 10
             risk_percent = 0.01
-            equity = float(self.account_info.get("balance", 0))
+            equity = float(self.account_info.get("available", 0))
             risk_amount = equity * risk_percent
 
             pip_distance = abs(entry - stop_loss) * pip_factor
