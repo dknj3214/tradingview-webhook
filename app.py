@@ -74,38 +74,67 @@ class IGTrader:
     def get_account_info(self):
         return self.account_info
 
-    def calculate_size(self, entry, stop_loss):
+    def get_spread(self, epic, pip_factor=10000):
+        """
+        取得指定 epic 的實時點差(pips)
+        """
+        url = self.base_url + "/prices"
+        params = {"epics": epic}
+        headers = self.headers.copy()
+        headers["Version"] = "3"
+
+        resp = self.session.get(url, headers=headers, params=params)
+        if resp.status_code != 200:
+            print(f"[錯誤] 取得價格失敗: {resp.status_code} {resp.text}")
+            return 0
+
+        data = resp.json()
+        prices = data.get("prices", [])
+        if not prices:
+            print(f"[錯誤] 找不到價格資料 epic={epic}")
+            return 0
+
+        price_info = prices[0]
+        bid = float(price_info.get("bid", 0))
+        offer = float(price_info.get("offer", 0))
+        spread = (offer - bid) * pip_factor
+        spread = max(spread, 0)
+        print(f"[點差] epic: {epic}, bid: {bid}, offer: {offer}, spread: {spread:.2f} pips")
+        return spread
+
+    def calculate_size(self, entry, stop_loss, epic=None):
         try:
-            # === 價格轉換與防錯 ===
             entry = float(entry)
             stop_loss = float(stop_loss)
-    
+
             if entry == stop_loss:
                 raise ValueError("Entry price and stop loss cannot be the same.")
-    
-            # === 固定參數（可依需求自行調整） ===
-            pip_factor = 10000                   # EUR/GBP 每 pip = 0.0001
-            pip_value_per_standard_lot = 10      # 每標準手每 pip 價值（以 USD 計）
-            risk_percent = 0.01                  # 每筆交易風險佔本金比例（1%）
-    
-            # === 帳戶資訊 ===
+
+            pip_factor = 10000
+            pip_value_per_standard_lot = 10
+            risk_percent = 0.01
             equity = float(self.account_info.get("balance", 0))
             risk_amount = equity * risk_percent
-    
-            # === 計算止損距離（pips） ===
+
             pip_distance = abs(entry - stop_loss) * pip_factor
-            pip_distance = max(pip_distance, 1)  # 防止除以 0
-    
-            # === 根據風險金額計算倉位大小（單位：標準手） ===
-            position_size = risk_amount / (pip_distance * pip_value_per_standard_lot)
-    
-            # === 輸出結果 ===
-            print("[倉位計算 - 風控法]")
+            pip_distance = max(pip_distance, 1)
+
+            spread_pips = 0
+            if epic:
+                spread_pips = self.get_spread(epic, pip_factor)
+
+            effective_pip_distance = pip_distance + spread_pips
+
+            position_size = risk_amount / (effective_pip_distance * pip_value_per_standard_lot)
+
+            print("[倉位計算 - 風控法（含點差）]")
             print(f"  ▶ 本金             : ${equity:.2f}")
             print(f"  ▶ 可承受風險金額   : ${risk_amount:.2f}")
             print(f"  ▶ 止損距離（pips）: {pip_distance:.1f}")
+            print(f"  ▶ 點差（pips）      : {spread_pips:.1f}")
+            print(f"  ▶ 有效止損距離(pips): {effective_pip_distance:.1f}")
             print(f"  ▶ ✅ 建議倉位大小   : {position_size:.2f} 手")
-    
+
             return round(position_size, 2)
 
         except Exception as e:
@@ -205,7 +234,7 @@ def api_webhook():
         if mode == "order":
             if not epic or not direction or not entry or not stop_loss:
                 return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
-            size = trader.calculate_size(entry, stop_loss)
+            size = trader.calculate_size(entry, stop_loss, epic=epic)
             result = trader.place_order(epic, direction, size)
 
         elif mode == "close":
