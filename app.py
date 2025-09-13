@@ -87,6 +87,9 @@ class IGTrader:
 
     def calculate_size(self, entry, stop_loss, epic=None):
         try:
+            if epic is None:
+                raise ValueError("calculate_size 必須提供 epic")
+
             entry = float(entry)
             stop_loss = float(stop_loss)
             if entry == stop_loss:
@@ -101,7 +104,7 @@ class IGTrader:
             pip_distance = abs(entry - stop_loss) * pip_factor
             pip_distance = max(pip_distance, 1)
 
-            spread_pips = self.get_spread(epic) if epic else 0
+            spread_pips = self.get_spread(epic)
             effective_pip_distance = pip_distance + spread_pips
             position_size = risk_amount / (effective_pip_distance * pip_value_per_standard_lot)
 
@@ -133,6 +136,9 @@ class IGTrader:
         return resp.json()
 
     def close_position(self, epic=None):
+        if epic is None:
+            raise ValueError("close_position 必須提供 epic")
+
         positions = self.get_positions()
         targets = [p for p in positions if p["market"]["epic"] == epic]
         if not targets:
@@ -201,21 +207,17 @@ def api_webhook():
         entry = data.get("entry")
         stop_loss = data.get("stop_loss")
 
-        # 自動判斷 epic，如果 Pine Script 沒指定
-        if not epic and "symbol" in data:
-            symbol = data["symbol"].upper()
-            if symbol in PRODUCTS:
-                epic = PRODUCTS[symbol]["epic"]
+        # 如果沒有 epic 就直接回錯誤
+        if epic is None:
+            return jsonify({"error": "必須提供 epic"}), 400
 
         if mode == "order":
-            if not epic or not direction or not entry or not stop_loss:
-                return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
+            if not direction or not entry or not stop_loss:
+                return jsonify({"error": "direction, entry, stop_loss 都要提供"}), 400
             size = trader.calculate_size(entry, stop_loss, epic=epic)
             result = trader.place_order(epic, direction, size)
 
         elif mode == "close":
-            if not epic:
-                return jsonify({"error": "close 時必須提供 epic"}), 400
             result = trader.close_position(epic=epic)
 
         else:
