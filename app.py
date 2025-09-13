@@ -16,6 +16,16 @@ check_ascii(os.environ["IG_USERNAME"], "IG_USERNAME")
 check_ascii(os.environ["IG_PASSWORD"], "IG_PASSWORD")
 
 # ===========================
+# 商品對應表
+# ===========================
+PRODUCTS = {
+    "GBPUSD": {"type": "forex", "epic": "CS.D.GBPUSD.CFD.IP", "spread": 0.0002},
+    "EURUSD": {"type": "forex", "epic": "CS.D.EURUSD.CFD.IP", "spread": 0.0002},
+    "BTCUSD": {"type": "crypto", "epic": "CS.D.BITCOIN.CFD.IP", "spread": 36},
+    "ETHUSD": {"type": "crypto", "epic": "CS.D.ETHEREUM.CFD.IP", "spread": 36},
+}
+
+# ===========================
 # IGTrader 類
 # ===========================
 class IGTrader:
@@ -45,22 +55,16 @@ class IGTrader:
         if resp.status_code != 200:
             raise Exception(f"登入失敗：{resp.status_code} {resp.text}")
 
-        print("登入回應資料:", resp.json())
-
         accounts = resp.json().get("accounts", [])
         if accounts:
             self.account_id = accounts[0]["accountId"]
             self.account_info = resp.json().get("accountInfo")
-            print("帳戶 ID:", self.account_id)
         else:
             raise Exception("無法找到帳戶資料")
 
         self.headers["X-SECURITY-TOKEN"] = resp.headers["X-SECURITY-TOKEN"]
         self.headers["CST"] = resp.headers["CST"]
-        print("登入成功，帳戶 ID:", self.account_id)
-
         self.available_funds = float(self.account_info.get("available", 0))
-        print(f"[登入] 可用保證金 available_funds: {self.available_funds}")
 
     def get_positions(self):
         url = self.base_url + "/positions"
@@ -74,39 +78,17 @@ class IGTrader:
     def get_account_info(self):
         return self.account_info
 
-    def get_spread(self, epic, pip_factor=10000):
-        """
-        取得指定 epic 的實時點差(pips)
-        """
-        url = self.base_url + "/prices"
-        params = {"epics": epic}
-        headers = self.headers.copy()
-        headers["Version"] = "3"
-
-        resp = self.session.get(url, headers=headers, params=params)
-        if resp.status_code != 200:
-            print(f"[錯誤] 取得價格失敗: {resp.status_code} {resp.text}")
-            return 0
-
-        data = resp.json()
-        prices = data.get("prices", [])
-        if not prices:
-            print(f"[錯誤] 找不到價格資料 epic={epic}")
-            return 0
-
-        price_info = prices[0]
-        bid = float(price_info.get("bid", 0))
-        offer = float(price_info.get("offer", 0))
-        spread = (offer - bid) * pip_factor
-        spread = max(spread, 0)
-        print(f"[點差] epic: {epic}, bid: {bid}, offer: {offer}, spread: {spread:.2f} pips")
-        return spread
+    def get_spread(self, epic):
+        # 如果 epic 在 PRODUCTS 表中，有預設點差
+        for prod in PRODUCTS.values():
+            if prod["epic"] == epic:
+                return prod["spread"]
+        return 0
 
     def calculate_size(self, entry, stop_loss, epic=None):
         try:
             entry = float(entry)
             stop_loss = float(stop_loss)
-
             if entry == stop_loss:
                 raise ValueError("Entry price and stop loss cannot be the same.")
 
@@ -119,21 +101,9 @@ class IGTrader:
             pip_distance = abs(entry - stop_loss) * pip_factor
             pip_distance = max(pip_distance, 1)
 
-            spread_pips = 0
-            if epic:
-                spread_pips = self.get_spread(epic, pip_factor)
-
+            spread_pips = self.get_spread(epic) if epic else 0
             effective_pip_distance = pip_distance + spread_pips
-
             position_size = risk_amount / (effective_pip_distance * pip_value_per_standard_lot)
-
-            print("[倉位計算 - 風控法（含點差）]")
-            print(f"  ▶ 本金             : ${equity:.2f}")
-            print(f"  ▶ 可承受風險金額   : ${risk_amount:.2f}")
-            print(f"  ▶ 止損距離（pips）: {pip_distance:.1f}")
-            print(f"  ▶ 點差（pips）      : {spread_pips:.1f}")
-            print(f"  ▶ 有效止損距離(pips): {effective_pip_distance:.1f}")
-            print(f"  ▶ ✅ 建議倉位大小   : {position_size:.2f} 手")
 
             return round(position_size, 2)
 
@@ -157,7 +127,6 @@ class IGTrader:
         }
         headers = self.headers.copy()
         headers["Version"] = "2"
-        print(f"[下單] payload: {payload}")
         resp = self.session.post(url, json=payload, headers=headers)
         if resp.status_code not in [200, 201]:
             return {"error": resp.text, "status_code": resp.status_code}
@@ -222,7 +191,8 @@ def api_webhook():
         raw = request.data.decode("utf-8")
         print("收到 Webhook raw:", raw)
 
-        data = dict(item.split("=") for item in raw.split("&") if "=" in item)
+        # 解析 key=value
+        data = dict(item.split("=", 1) for item in raw.split("&") if "=" in item)
         print("解析後:", data)
 
         mode = data.get("mode")
@@ -230,6 +200,12 @@ def api_webhook():
         direction = data.get("direction")
         entry = data.get("entry")
         stop_loss = data.get("stop_loss")
+
+        # 自動判斷 epic，如果 Pine Script 沒指定
+        if not epic and "symbol" in data:
+            symbol = data["symbol"].upper()
+            if symbol in PRODUCTS:
+                epic = PRODUCTS[symbol]["epic"]
 
         if mode == "order":
             if not epic or not direction or not entry or not stop_loss:
