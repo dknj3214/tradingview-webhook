@@ -75,9 +75,6 @@ class IGTrader:
         return self.account_info
 
     def get_spread(self, epic, pip_factor=10000):
-        """
-        取得指定 epic 的實時點差(pips)
-        """
         url = self.base_url + "/prices"
         params = {"epics": epic}
         headers = self.headers.copy()
@@ -141,7 +138,7 @@ class IGTrader:
             print(f"[錯誤] 倉位計算失敗: {str(e)}")
             return 0.0
 
-    def place_order(self, epic, direction, size=1, order_type="MARKET"):
+    def place_order(self, epic, direction, size=1, order_type="MARKET", stop_level=None):
         url = self.base_url + "/positions/otc"
         payload = {
             "epic": epic,
@@ -155,6 +152,11 @@ class IGTrader:
             "dealReference": f"order-{int(time.time())}",
             "expiry": "-",
         }
+
+        # ✅ 加入 stopLevel
+        if stop_level:
+            payload["stopLevel"] = float(stop_level)
+
         headers = self.headers.copy()
         headers["Version"] = "2"
         print(f"[下單] payload: {payload}")
@@ -235,7 +237,8 @@ def api_webhook():
             if not epic or not direction or not entry or not stop_loss:
                 return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
             size = trader.calculate_size(entry, stop_loss, epic=epic)
-            result = trader.place_order(epic, direction, size)
+            # ✅ stop_loss 傳給 stopLevel
+            result = trader.place_order(epic, direction, size, stop_level=stop_loss)
 
         elif mode == "close":
             if not epic:
