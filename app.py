@@ -141,9 +141,8 @@ class IGTrader:
             print(f"[錯誤] 倉位計算失敗: {str(e)}")
             return 0.0
 
-    def place_order(self, epic, direction, size=1, order_type="MARKET", stop_price=None):
+    def place_order(self, epic, direction, size=1, order_type="MARKET"):
         url = self.base_url + "/positions/otc"
-        
         payload = {
             "epic": epic,
             "direction": direction.upper(),
@@ -156,21 +155,13 @@ class IGTrader:
             "dealReference": f"order-{int(time.time())}",
             "expiry": "-",
         }
-    
-        if stop_price:
-            payload["stopLevel"] = abs(float(stop_price))  # IG 要求是 float 且為正值距離
-    
         headers = self.headers.copy()
         headers["Version"] = "2"
-    
         print(f"[下單] payload: {payload}")
         resp = self.session.post(url, json=payload, headers=headers)
-    
         if resp.status_code not in [200, 201]:
             return {"error": resp.text, "status_code": resp.status_code}
-    
         return resp.json()
-
 
     def close_position(self, epic=None):
         positions = self.get_positions()
@@ -243,21 +234,8 @@ def api_webhook():
         if mode == "order":
             if not epic or not direction or not entry or not stop_loss:
                 return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
-        
             size = trader.calculate_size(entry, stop_loss, epic=epic)
-        
-            # 計算 stopLevel（進場價與止損價的距離）
-            entry = float(entry)
-            stop_loss = float(stop_loss)
-            stop_level = abs(entry - stop_loss)
-        
-            result = trader.place_order(
-                epic=epic,
-                direction=direction,
-                size=size,
-                order_type="MARKET",
-                stop_price=stop_level  # 傳的是距離
-            )
+            result = trader.place_order(epic, direction, size)
 
         elif mode == "close":
             if not epic:
