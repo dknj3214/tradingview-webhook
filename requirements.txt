@@ -2,3 +2,4 @@ trading-ig
 flask
 requests
 pandas
+gunicorn
