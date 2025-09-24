@@ -40,67 +40,71 @@ class IGTrader:
     def _login(self):
         url = self.base_url + "/session"
         payload = {"identifier": self.username, "password": self.password}
-        resp = self.session.post(url, json=payload, headers=self.headers)
+        resp = self.session.post(url, json=payload, headers=self.headers, timeout=10)
 
         if resp.status_code != 200:
             raise Exception(f"登入失敗：{resp.status_code} {resp.text}")
-
-        print("登入回應資料:", resp.json())
 
         accounts = resp.json().get("accounts", [])
         if accounts:
             self.account_id = accounts[0]["accountId"]
             self.account_info = resp.json().get("accountInfo")
-            print("帳戶 ID:", self.account_id)
         else:
             raise Exception("無法找到帳戶資料")
 
         self.headers["X-SECURITY-TOKEN"] = resp.headers["X-SECURITY-TOKEN"]
         self.headers["CST"] = resp.headers["CST"]
-        print("登入成功，帳戶 ID:", self.account_id)
 
         self.available_funds = float(self.account_info.get("available", 0))
-        print(f"[登入] 可用保證金 available_funds: {self.available_funds}")
+        print(f"[登入成功] 可用保證金: {self.available_funds}")
+
+    def _safe_request(self, method, url, **kwargs):
+        retries = 2
+        for attempt in range(retries):
+            try:
+                resp = self.session.request(method, url, timeout=10, **kwargs)
+                if resp.status_code == 401:
+                    print("[IGTrader] Session 過期，自動登入...")
+                    self._login()
+                    continue
+                return resp
+            except requests.exceptions.RequestException as e:
+                print(f"[IGTrader] 網路錯誤: {str(e)}")
+                if attempt < retries - 1:
+                    time.sleep(1)
+                else:
+                    raise
+        return None
 
     def get_positions(self):
         url = self.base_url + "/positions"
         headers = self.headers.copy()
         headers["Version"] = "2"
-        resp = self.session.get(url, headers=headers)
-        if resp.status_code != 200:
-            raise Exception(f"查詢持倉失敗：{resp.status_code} {resp.text}")
+        resp = self._safe_request("GET", url, headers=headers)
+        if not resp or resp.status_code != 200:
+            print(f"[get_positions] 錯誤: {resp.status_code if resp else '無回應'}")
+            return []
         return resp.json().get("positions", [])
 
     def get_account_info(self):
         return self.account_info
 
     def get_spread(self, epic, pip_factor=10000):
-        """
-        取得指定 epic 的實時點差(pips)
-        """
         url = self.base_url + "/prices"
         params = {"epics": epic}
         headers = self.headers.copy()
         headers["Version"] = "3"
-
-        resp = self.session.get(url, headers=headers, params=params)
-        if resp.status_code != 200:
-            print(f"[錯誤] 取得價格失敗: {resp.status_code} {resp.text}")
+        resp = self._safe_request("GET", url, headers=headers, params=params)
+        if not resp or resp.status_code != 200:
+            print(f"[get_spread] 錯誤: {resp.status_code if resp else '無回應'}")
             return 0
-
-        data = resp.json()
-        prices = data.get("prices", [])
+        prices = resp.json().get("prices", [])
         if not prices:
-            print(f"[錯誤] 找不到價格資料 epic={epic}")
             return 0
-
-        price_info = prices[0]
-        bid = float(price_info.get("bid", 0))
-        offer = float(price_info.get("offer", 0))
+        bid = float(prices[0].get("bid", 0))
+        offer = float(prices[0].get("offer", 0))
         spread = (offer - bid) * pip_factor
-        spread = max(spread, 0)
-        print(f"[點差] epic: {epic}, bid: {bid}, offer: {offer}, spread: {spread:.2f} pips")
-        return spread
+        return max(spread, 0)
 
     def calculate_size(self, entry, stop_loss, epic=None):
         try:
@@ -108,7 +112,7 @@ class IGTrader:
             stop_loss = float(stop_loss)
 
             if entry == stop_loss:
-                raise ValueError("Entry price and stop loss cannot be the same.")
+                raise ValueError("Entry price 與 stop_loss 不能相同")
 
             pip_factor = 10000
             pip_value_per_standard_lot = 10
@@ -119,23 +123,13 @@ class IGTrader:
             pip_distance = abs(entry - stop_loss) * pip_factor
             pip_distance = max(pip_distance, 1)
 
-            spread_pips = 0
-            if epic:
-                spread_pips = self.get_spread(epic, pip_factor)
-
+            spread_pips = self.get_spread(epic, pip_factor) if epic else 0
             effective_pip_distance = pip_distance + spread_pips
 
             position_size = risk_amount / (effective_pip_distance * pip_value_per_standard_lot)
 
-            print("[倉位計算 - 風控法（含點差）]")
-            print(f"  ▶ 本金             : ${equity:.2f}")
-            print(f"  ▶ 可承受風險金額   : ${risk_amount:.2f}")
-            print(f"  ▶ 止損距離（pips）: {pip_distance:.1f}")
-            print(f"  ▶ 點差（pips）      : {spread_pips:.1f}")
-            print(f"  ▶ 有效止損距離(pips): {effective_pip_distance:.1f}")
-            print(f"  ▶ ✅ 建議倉位大小   : {position_size:.2f} 手")
-
-            return round(position_size, 2)
+            print(f"[倉位計算] 本金: {equity}, 可承受風險: {risk_amount}, 止損距離: {pip_distance}, 點差: {spread_pips}, 建議手數: {position_size:.2f}")
+            return round(position_size, 2) if position_size > 0 else 0.0
 
         except Exception as e:
             print(f"[錯誤] 倉位計算失敗: {str(e)}")
@@ -157,10 +151,9 @@ class IGTrader:
         }
         headers = self.headers.copy()
         headers["Version"] = "2"
-        print(f"[下單] payload: {payload}")
-        resp = self.session.post(url, json=payload, headers=headers)
-        if resp.status_code not in [200, 201]:
-            return {"error": resp.text, "status_code": resp.status_code}
+        resp = self._safe_request("POST", url, json=payload, headers=headers)
+        if not resp or resp.status_code not in [200, 201]:
+            return {"error": resp.text if resp else "無回應", "status_code": resp.status_code if resp else 0}
         return resp.json()
 
     def close_position(self, epic=None):
@@ -191,12 +184,13 @@ class IGTrader:
             }
             headers = self.headers.copy()
             headers["Version"] = "2"
-            resp = self.session.post(url, json=payload, headers=headers)
-            if resp.status_code not in [200, 201]:
-                results.append({"dealId": deal_id, "error": resp.text, "status_code": resp.status_code})
+            resp = self._safe_request("POST", url, json=payload, headers=headers)
+            if not resp or resp.status_code not in [200, 201]:
+                results.append({"dealId": deal_id, "error": resp.text if resp else "無回應", "status_code": resp.status_code if resp else 0})
             else:
                 results.append(resp.json())
         return results
+
 
 # ===========================
 # Flask App
@@ -220,10 +214,12 @@ def api_get_account_info():
 def api_webhook():
     try:
         raw = request.data.decode("utf-8")
-        print("收到 Webhook raw:", raw)
+        print("[Webhook] 收到 raw:", raw)
 
-        data = dict(item.split("=") for item in raw.split("&") if "=" in item)
-        print("解析後:", data)
+        try:
+            data = dict(item.split("=") for item in raw.split("&") if "=" in item)
+        except Exception as e:
+            return jsonify({"error": "Webhook 格式錯誤", "detail": str(e)}), 400
 
         mode = data.get("mode")
         epic = data.get("epic")
@@ -235,6 +231,8 @@ def api_webhook():
             if not epic or not direction or not entry or not stop_loss:
                 return jsonify({"error": "epic, direction, entry, stop_loss 都要提供"}), 400
             size = trader.calculate_size(entry, stop_loss, epic=epic)
+            if size <= 0:
+                return jsonify({"error": "無效規模，可能是止損距離或可用資金不夠"}), 400
             result = trader.place_order(epic, direction, size)
 
         elif mode == "close":
