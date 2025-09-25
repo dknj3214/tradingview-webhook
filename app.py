@@ -89,23 +89,6 @@ class IGTrader:
     def get_account_info(self):
         return self.account_info
 
-    def get_spread(self, epic, pip_factor=10000):
-        url = self.base_url + "/prices"
-        params = {"epics": epic}
-        headers = self.headers.copy()
-        headers["Version"] = "3"
-        resp = self._safe_request("GET", url, headers=headers, params=params)
-        if not resp or resp.status_code != 200:
-            print(f"[get_spread] 錯誤: {resp.status_code if resp else '無回應'}")
-            return 0
-        prices = resp.json().get("prices", [])
-        if not prices:
-            return 0
-        bid = float(prices[0].get("bid", 0))
-        offer = float(prices[0].get("offer", 0))
-        spread = (offer - bid) * pip_factor
-        return max(spread, 0)
-
     def calculate_size(self, entry, stop_loss, epic=None):
         try:
             entry = float(entry)
@@ -114,8 +97,8 @@ class IGTrader:
             if entry == stop_loss:
                 raise ValueError("Entry price 與 stop_loss 不能相同")
 
-            pip_factor = 10000
-            pip_value_per_standard_lot = 10
+            pip_factor = 10000  # 適用主要貨幣對 (EUR/USD, GBP/USD)
+            pip_value_per_standard_lot = 10  # 1 標準手 ≈ $10/pip
             risk_percent = 0.01
             equity = float(self.account_info.get("available", 0))
             risk_amount = equity * risk_percent
@@ -123,12 +106,13 @@ class IGTrader:
             pip_distance = abs(entry - stop_loss) * pip_factor
             pip_distance = max(pip_distance, 1)
 
-            spread_pips = self.get_spread(epic, pip_factor) if epic else 0
+            # 固定 spread = 1 pip
+            spread_pips = 1.0
             effective_pip_distance = pip_distance + spread_pips
 
             position_size = risk_amount / (effective_pip_distance * pip_value_per_standard_lot)
 
-            print(f"[倉位計算] 本金: {equity}, 可承受風險: {risk_amount}, 止損距離: {pip_distance}, 點差: {spread_pips}, 建議手數: {position_size:.2f}")
+            print(f"[倉位計算] 本金: {equity}, 可承受風險: {risk_amount}, 止損距離: {pip_distance}, 固定點差: {spread_pips}, 建議手數: {position_size:.2f}")
             return round(position_size, 2) if position_size > 0 else 0.0
 
         except Exception as e:
